@@ -1,0 +1,141 @@
+# Brandcast TV — Cloud Digital Signage Platform
+
+A complete, multi-tenant digital signage SaaS. Turns any smart TV into a centrally
+managed marketing display: pair with a 4-digit code, assign playlists, push promotions
+instantly, and monitor screen health from anywhere.
+
+Implements the Brandcast TV PRD v1.0 end to end — all three roadmap phases.
+
+## Quick start
+
+```bash
+npm install
+npm run seed     # demo org, branches, media, playlists, schedules
+npm start        # http://localhost:4000
+```
+
+| Surface | URL |
+|---|---|
+| Dashboard | http://localhost:4000 |
+| TV player (browser kiosk client) | http://localhost:4000/tv |
+
+### Demo accounts (password `password123`)
+
+| Role | Email | Can do |
+|---|---|---|
+| Owner | owner@acme.test | Everything incl. billing |
+| Admin | admin@acme.test | All except billing |
+| Branch Manager | manager@acme.test | Only assigned branches |
+| Content Editor | editor@acme.test | Author content, cannot publish |
+| Viewer | viewer@acme.test | Read only |
+| Superadmin | superadmin@brandcast.tv | Platform console (`superadmin123`) |
+
+### See it work in 60 seconds
+
+1. Open the **TV player** in one tab — it shows a 4-digit code with a countdown.
+2. Sign in to the **dashboard** as the owner, go to **Screens → + Add New Screen**.
+3. Enter the code, name the screen, pick a playlist, click **Pair & go live**.
+4. The TV starts playing immediately. Change its playlist and watch it update in under a second.
+5. Kill the server: the TV keeps looping from its local cache and reconnects automatically.
+
+## Architecture
+
+Three planes, exactly as specified in the PRD.
+
+```mermaid
+flowchart LR
+  subgraph Control["Control Plane"]
+    D[Dashboard SPA]
+    A[REST API]
+  end
+  subgraph Delivery["Delivery Plane"]
+    W[WebSocket hub]
+    J[Scheduler / health / billing jobs]
+  end
+  subgraph Device["Device Plane"]
+    T[TV kiosk client<br/>local cache]
+  end
+  D --> A
+  A --> W
+  J --> W
+  W -- "content push < 5s" --> T
+  T -- "ack · heartbeat · play events" --> W
+  T -- "catch-up fetch when offline" --> A
+```
+
+- **Backend**: Node + Express, SQLite (WAL), `ws` for the realtime plane. No build step.
+- **Dashboard**: dependency-free ES-module SPA (`public/dashboard`).
+- **TV client**: single-file browser kiosk player (`public/tv`) — the PRD's recommended
+  universal client, running on Android TV, Tizen, webOS and any browser.
+
+```
+src/lib/     db · auth+RBAC · plans · hub (realtime) · content (resolution) · jobs
+src/routes/  accounts · content · screens · schedules · insights · superadmin
+public/      dashboard SPA · tv player
+tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
+```
+
+## Feature coverage
+
+**Phase 1 — MVP**
+- 4-digit OTP pairing with countdown, expiry and regeneration
+- Add New Screen: name, branch, playlist, flash news, orientation, auto-captured metadata
+- Instant push over WebSocket with per-screen Pending → Delivered → Rendered status
+- Offline fallback: local cache loop, auto-reconnect, delta sync on recovery
+- Unpair/re-pair with instant device-token revocation
+
+**Phase 2 — Multi-branch & scheduling**
+- Organization → Branch → Screen hierarchy with per-branch timezones and defaults
+- Full RBAC (Owner, Admin, Branch Manager, Content Editor, Viewer) enforced at the API layer
+- Scheduling engine: dayparting, date ranges, days-of-week, timezone-aware,
+  conflict precedence (screen > branch > org) with visible warnings
+- Media library (upload + CDN link, tags, folders, version history), playlist
+  drag-and-drop builder with preview, flash news ticker
+- Screen health monitoring, offline alerts, bulk publish, one-click rollback
+- Self-serve billing: plan tiers, per-screen pricing, limits, GST-compliant invoices
+
+**Phase 3 — Enterprise & platform scale**
+- Superadmin console: tenants, suspend/restore, plan changes, MRR, platform health
+- Per-org feature flags for staged rollout; audit-logged support impersonation
+- Content approval workflow, media version history and restore
+- TOTP 2FA (org-enforceable), SSO exchange endpoint, full audit log
+- Analytics: uptime per screen/branch with CSV export, play counts and duration
+
+## Verification
+
+```bash
+npm test    # 39 tests: 24 API/realtime + 15 UI
+```
+
+The suite runs against a real server and a real DOM. It covers the PRD acceptance
+criteria directly, including measured publish latency, offline detection and recovery,
+tenant isolation, RBAC denials, plan-limit enforcement and the superadmin console.
+
+Measured against the PRD KPIs on a local run:
+
+| KPI | Target | Measured |
+|---|---|---|
+| Time to pair a screen | < 2 min | ~30 ms API round trip |
+| Publish-to-display latency (P95) | < 5 s | ~75 ms |
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `4000` | HTTP port |
+| `DB_PATH` | `data/brandcast.db` | SQLite location |
+| `JWT_SECRET` | dev value | **Set in production** |
+| `OTP_TTL_MS` | `180000` | Pairing code lifetime |
+| `OFFLINE_AFTER_MS` | `90000` | Missed-heartbeat offline threshold |
+| `MAX_UPLOAD_BYTES` | `200MB` | Upload cap |
+
+## Production notes
+
+Deliberate choices for a runnable reference implementation, and what to swap at scale:
+
+- SQLite → Postgres, and the in-process WebSocket hub → MQTT/Redis pub-sub for
+  multi-node fan-out to tens of thousands of screens.
+- Local `uploads/` → S3 + CDN (the media model already supports external URLs).
+- The billing service is gateway-abstracted; wire Stripe/Razorpay webhooks to
+  `/api/billing/subscribe`. No card data is ever stored.
+- Set `JWT_SECRET` and terminate TLS at the edge.
