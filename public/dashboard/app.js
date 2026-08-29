@@ -26,7 +26,7 @@ const NAV = [
   { sep: 'nav.org', items: ['/branches', '/team', '/billing', '/audit', '/settings'] },
 ];
 
-const titleOf = (r) => t(r.key);
+const titleOf = (r) => tr(r.key);
 
 const root = () => document.getElementById('root');
 const path = () => (location.hash.slice(1) || '/dashboard').split('?')[0];
@@ -44,6 +44,8 @@ async function render() {
   }
 
   const isSuper = state.me.user.role === 'superadmin';
+  // A superadmin outside a support session has no tenant data; tenant routes would 403.
+  if (isSuper && !state.me.org && p !== '/admin') { location.hash = '/admin'; return; }
   const route = ROUTES[p] || ROUTES['/dashboard'];
   if (route.superadmin && !isSuper) return (location.hash = '/dashboard');
   if (route.perm && !can(route.perm)) return (location.hash = '/dashboard');
@@ -51,8 +53,8 @@ async function render() {
   const body = h('div', { class: 'content', role: 'region', 'aria-live': 'polite', 'aria-busy': 'true', tabindex: '-1' },
     h('div', { class: 'muted' }, tr('common.loading')));
 
-  const nav = NAV.map((group) => [
-    h('div', { class: 'nav-sep' }, t(group.sep)),
+  const nav = (isSuper && !state.me.org ? [] : NAV).map((group) => [
+    h('div', { class: 'nav-sep' }, tr(group.sep)),
     group.items.filter((key) => {
       const r = ROUTES[key];
       return !(r.perm && !can(r.perm));
@@ -82,7 +84,9 @@ async function render() {
     h('main', { class: 'main', id: 'main-content' },
       h('header', { class: 'topbar' },
         h('div', {}, h('h2', {}, titleOf(route)),
-          state.me.org && h('div', { class: 'tiny muted' }, `${state.me.org.name} · ${state.me.plan.name}`)),
+          state.me.org
+            ? h('div', { class: 'tiny muted' }, `${state.me.org.name} · ${state.me.plan?.name || ''}`)
+            : h('div', { class: 'tiny muted' }, tr('nav.platform'))),
         h('div', { class: 'right' },
           h('select', {
             'aria-label': tr('common.language'), class: 'lang-select',

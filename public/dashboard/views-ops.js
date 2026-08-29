@@ -397,7 +397,7 @@ export async function SettingsView(rerender) {
       h('div', { class: 'small muted' }, 'Open the browser kiosk player on any smart TV, then pair with the shown code.'),
       h('a', { class: 'btn btn-sm', href: '/tv', target: '_blank', style: 'display:inline-block;margin-top:8px' }, 'Open TV player'),
       h('h3', { class: 'mt' }, 'Plan features'),
-      h('div', { class: 'row' }, state.me.plan.features.map((f) => h('span', { class: 'badge' }, f)))));
+      h('div', { class: 'row' }, (state.me.plan?.features || []).map((f) => h('span', { class: 'badge' }, f)))));
 }
 
 /* ==================== AUDIT LOG ==================== */

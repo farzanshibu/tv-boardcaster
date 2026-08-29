@@ -324,6 +324,84 @@ test('every view module imports i18n and uses it', async () => {
   }
 });
 
+/* The suite previously called view functions directly and never executed app.js,
+   so a ReferenceError inside render() shipped while every test passed. This boots
+   the real entry point the way a browser does. */
+async function bootApp(hash, tokenOverride) {
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const dom = new JSDOM(html, { url: `${BASE}/${hash}`, pretendToBeVisual: true });
+  const w = dom.window;
+  w.localStorage.setItem('bc_token', tokenOverride || token);
+  w.fetch = (url, opts) => realFetch(String(url).startsWith('http') ? String(url) : BASE + url, opts);
+  w.WebSocket = class { constructor() { this.readyState = 0; } close() {} send() {} addEventListener() {} };
+  w.confirm = () => true;
+
+  const g = globalThis;
+  const saved = {
+    window: g.window, document: g.document, localStorage: g.localStorage, fetch: g.fetch,
+    WebSocket: g.WebSocket, Node: g.Node, FormData: g.FormData, Blob: g.Blob,
+    MutationObserver: g.MutationObserver, navigator: g.navigator, location: g.location,
+  };
+  Object.assign(g, {
+    window: w, document: w.document, localStorage: w.localStorage, fetch: w.fetch,
+    WebSocket: w.WebSocket, Node: w.Node, FormData: w.FormData, Blob: w.Blob,
+    MutationObserver: w.MutationObserver,
+  });
+  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
+  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
+
+  const failures = [];
+  const onReject = (e) => failures.push(String(e?.stack || e));
+  process.on('unhandledRejection', onReject);
+
+  // app.js imports core.js statically, so busting app.js still shares one core module.
+  // Clear the cached session so each boot starts from the given token.
+  const core = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/core.js')).href);
+  core.state.me = null;
+  core.state.ws = null;
+  core.state.token = tokenOverride || token;
+
+  await import(pathToFileURL(path.join(ROOT, 'public/dashboard/app.js')).href + `?boot=${Date.now()}${Math.random()}`);
+  await new Promise((r) => setTimeout(r, 900));
+
+  process.off('unhandledRejection', onReject);
+  const text = w.document.getElementById('root').textContent;
+  Object.assign(g, saved);
+  return { text, failures, w };
+}
+
+test('the app actually boots and paints past the loading screen', async () => {
+  const { text, failures } = await bootApp('#/dashboard');
+  assert.deepEqual(failures, [], `app.js threw during render: ${failures[0] || ''}`);
+  assert.doesNotMatch(text, /^Loading Brandcast TV/, 'still stuck on the boot placeholder');
+  assert.match(text, /Brandcast TV/, 'shell rendered');
+  assert.match(text, /Total screens|Overview/, 'the overview view rendered');
+});
+
+test('the app boots for a superadmin too', async () => {
+  const suToken = (await (await realFetch(`${BASE}/api/auth/login`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'superadmin@brandcast.tv', password: 'superadmin123' }),
+  })).json()).token;
+  // a superadmin with no tenant context is redirected to the platform console
+  const { text, failures } = await bootApp('#/dashboard', suToken);
+  assert.deepEqual(failures, [], `app.js threw for superadmin: ${failures[0] || ''}`);
+  assert.doesNotMatch(text, /^Loading Brandcast TV/, 'still stuck on the boot placeholder');
+  assert.match(text, /Platform Admin|Tenants|Organizations/, 'superadmin lands on the platform console');
+});
+
+test('every route boots without throwing', async () => {
+  const routes = ['/dashboard', '/screens', '/media', '/playlists', '/tickers',
+                  '/schedules', '/branches', '/analytics', '/team', '/billing',
+                  '/audit', '/settings'];
+  const broken = [];
+  for (const r of routes) {
+    const { text, failures } = await bootApp(`#${r}`);
+    if (failures.length || /^Loading Brandcast TV/.test(text)) broken.push(r);
+  }
+  assert.deepEqual(broken, [], `these routes fail to render: ${broken.join(', ')}`);
+});
+
 test('all client modules parse as valid JavaScript', async () => {
   const { execFileSync } = await import('node:child_process');
   const dir = path.join(ROOT, 'public/dashboard');

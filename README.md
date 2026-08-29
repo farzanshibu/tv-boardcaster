@@ -117,8 +117,11 @@ tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
 ## Verification
 
 ```bash
-npm test    # 80 tests: 24 API/realtime + 21 feature depth + 17 non-functional + 18 UI
+npm test    # 83 tests: 24 API/realtime + 21 feature depth + 17 non-functional + 21 UI
 ```
+
+Three of the UI tests boot `app.js` itself the way a browser does, so a runtime error
+in the shell fails the suite instead of silently leaving users on the loading screen.
 
 The suite runs against a real server and a real DOM. It covers the PRD acceptance
 criteria directly, including measured publish latency, offline detection and recovery,
