@@ -8,6 +8,19 @@ Implements the Brandcast TV PRD v1.0 end to end — all three roadmap phases.
 
 ## Quick start
 
+### With Docker (recommended)
+
+```bash
+cp .env.example .env                            # then set JWT_SECRET
+docker compose --profile seed run --rm seed     # load demo data (optional)
+docker compose up -d
+```
+
+Open <http://localhost:4000>. Stop with `docker compose down`, or
+`docker compose down -v` to also wipe the database and uploads.
+
+### Without Docker
+
 ```bash
 npm install
 npm run seed     # demo org, branches, media, playlists, schedules
@@ -104,12 +117,16 @@ tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
 ## Verification
 
 ```bash
-npm test    # 60 tests: 24 API/realtime + 21 feature depth + 15 UI
+npm test    # 73 tests: 24 API/realtime + 21 feature depth + 13 non-functional + 15 UI
 ```
 
 The suite runs against a real server and a real DOM. It covers the PRD acceptance
 criteria directly, including measured publish latency, offline detection and recovery,
 tenant isolation, RBAC denials, plan-limit enforcement and the superadmin console.
+
+`tests/nfr.test.js` covers the non-functional requirements: auth/signup rate
+limiting, the pairing-token hardening described below, WCAG landmarks and dialog
+semantics, and translation completeness across all five locales.
 
 `tests/features.test.js` covers the paths that are easy to claim and hard to verify:
 real multipart uploads with the bytes served back, version replace/restore, the
@@ -135,6 +152,25 @@ Measured against the PRD KPIs on a local run:
 | `OTP_TTL_MS` | `180000` | Pairing code lifetime |
 | `OFFLINE_AFTER_MS` | `90000` | Missed-heartbeat offline threshold |
 | `MAX_UPLOAD_BYTES` | `200MB` | Upload cap |
+| `UPLOAD_DIR` | `uploads/` | Media storage path |
+| `RATE_LIMIT_AUTH` | `10` | Login attempts per identity / 15 min |
+| `RATE_LIMIT_SIGNUP` | `5` | New tenants per IP / hour |
+| `DISABLE_RATE_LIMIT` | unset | Set to `1` only in tests |
+
+## Security and accessibility
+
+- **Rate limiting** on login, signup, password reset and pairing. Login buckets on
+  IP *and* email, so one attacker cannot lock out an unrelated account, and a
+  successful sign-in clears the counter.
+- **Pairing tokens are device-bound.** `/api/pairing/status/:code` requires the
+  caller's own `device_id`; guessing the 4-digit code alone will not surrender a
+  device token.
+- **WCAG 2.1 AA** on core admin workflows: skip link, `nav`/`main` landmarks,
+  `aria-current` on the active route, dialogs with focus trapping and Escape-to-close,
+  labelled form controls, visible focus rings, and `prefers-reduced-motion` support.
+  Body text sits at 16:1 contrast and muted text at 9.7:1 (AA needs 4.5:1).
+- **Localization** in English, Hindi, Tamil, Kannada and Arabic, with automatic RTL.
+  Add a language by adding one block to `public/dashboard/i18n.js`.
 
 ## Production notes
 
@@ -146,3 +182,5 @@ Deliberate choices for a runnable reference implementation, and what to swap at 
 - The billing service is gateway-abstracted; wire Stripe/Razorpay webhooks to
   `/api/billing/subscribe`. No card data is ever stored.
 - Set `JWT_SECRET` and terminate TLS at the edge.
+- The rate limiter is in-process. Across multiple nodes, also enforce limits at the
+  gateway, since each node keeps its own counters.

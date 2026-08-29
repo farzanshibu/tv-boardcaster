@@ -25,7 +25,7 @@ test.before(async () => {
   await new Promise((r) => seed.on('exit', r));
 
   proc = spawn(process.execPath, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH }, stdio: 'ignore',
+    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, DISABLE_RATE_LIMIT: '1' }, stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${BASE}/api/health`)).ok) break; } catch {}

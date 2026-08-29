@@ -37,7 +37,7 @@ const upload = (bytes, filename, type, extra = {}) => {
 
 test.before(async () => {
   proc = spawn(process.execPath, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH }, stdio: 'ignore',
+    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, DISABLE_RATE_LIMIT: '1' }, stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {}
@@ -134,7 +134,7 @@ test('approval workflow gates content until an approver signs off', async () => 
     code: otp.data.code, name: 'Approval Screen', branch_id: ctx.branchA, playlist_id: pl.data.id } });
   assert.equal(scr.status, 201);
   ctx.apprScreen = scr.data.id;
-  ctx.apprToken = (await call(`/pairing/status/${otp.data.code}`)).data.device_token;
+  ctx.apprToken = (await call(`/pairing/status/${otp.data.code}?device_id=${otp.data.device_id}`)).data.device_token;
 
   let payload = await (await fetch(`${BASE}/api/device/content`, { headers: { authorization: `Bearer ${ctx.apprToken}` } })).json();
   assert.equal(payload.playlist, null, 'unapproved playlist is not delivered to the TV');
@@ -220,7 +220,7 @@ test('branch default playlist applies to screens with no assignment', async () =
   assert.equal(scr.status, 201);
   assert.equal(scr.data.playlist_id, null, 'screen itself has no playlist');
 
-  const token = (await call(`/pairing/status/${otp.data.code}`)).data.device_token;
+  const token = (await call(`/pairing/status/${otp.data.code}?device_id=${otp.data.device_id}`)).data.device_token;
   const payload = await (await fetch(`${BASE}/api/device/content`, { headers: { authorization: `Bearer ${token}` } })).json();
   assert.equal(payload.playlist.id, pl.data.id, 'branch default used as fallback');
   assert.equal(payload.ticker.id, tk.data.id);
@@ -234,7 +234,7 @@ test('ticker time-boxing hides it outside the configured window', async () => {
   const scr = await call('/screens', { method: 'POST', token: ctx.owner, body: {
     code: otp.data.code, name: 'Ticker Screen', branch_id: ctx.branchA, ticker_id: tk.data.id } });
   assert.equal(scr.status, 201);
-  const token = (await call(`/pairing/status/${otp.data.code}`)).data.device_token;
+  const token = (await call(`/pairing/status/${otp.data.code}?device_id=${otp.data.device_id}`)).data.device_token;
   const payload = await (await fetch(`${BASE}/api/device/content`, { headers: { authorization: `Bearer ${token}` } })).json();
 
   const local = (await call(`/schedules/preview/${scr.data.id}`, { token: ctx.owner })).data.local.time;

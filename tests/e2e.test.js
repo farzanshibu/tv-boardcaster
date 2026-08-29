@@ -27,7 +27,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test.before(async () => {
   proc = spawn(process.execPath, ['src/server.js'], {
-    env: { ...process.env, PORT: String(PORT), DB_PATH, NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000' },
+    env: { ...process.env, PORT: String(PORT), DB_PATH, NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000', DISABLE_RATE_LIMIT: '1' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
@@ -114,7 +114,7 @@ test('pairing flow: OTP -> verify -> add screen -> live', async () => {
   assert.equal(s.data.paired, true);
   ctx.screen = s.data.id;
 
-  const status = await call(`/pairing/status/${ctx.code}`);
+  const status = await call(`/pairing/status/${ctx.code}?device_id=dev-e2e-1`);
   assert.equal(status.data.status, 'paired');
   ctx.deviceToken = status.data.device_token;
 
@@ -127,7 +127,7 @@ test('pairing flow: OTP -> verify -> add screen -> live', async () => {
 
 test('expired/invalid codes are rejected', async () => {
   assert.equal((await call('/pairing/verify', { method: 'POST', token: ctx.owner, body: { code: '0000' } })).status, 404);
-  assert.equal((await call('/pairing/status/9999')).status, 404);
+  assert.equal((await call('/pairing/status/9999?device_id=x')).status, 404);
 });
 
 test('device session: connects, receives content, acks, reports plays', async () => {
@@ -290,7 +290,7 @@ test('billing produces a GST-compliant invoice', async () => {
 test('unpair revokes the device token and forces re-pairing', async () => {
   const otp = await call('/pairing/generate-otp', { method: 'POST', body: { device_id: 'dev-unpair' } });
   const s = await call('/screens', { method: 'POST', token: ctx.owner, body: { code: otp.data.code, name: 'Temp Screen', branch_id: ctx.branch } });
-  const token = (await call(`/pairing/status/${otp.data.code}`)).data.device_token;
+  const token = (await call(`/pairing/status/${otp.data.code}?device_id=${otp.data.device_id}`)).data.device_token;
   assert.equal((await fetch(`${BASE}/api/device/content`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
 
   await call(`/screens/${s.data.id}/unpair`, { method: 'POST', token: ctx.owner });

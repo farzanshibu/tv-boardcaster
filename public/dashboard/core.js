@@ -48,16 +48,33 @@ export function h(tag, props = {}, ...children) {
 export const $ = (sel, root = document) => root.querySelector(sel);
 
 export function toast(message, kind = '') {
-  const el = h('div', { class: `toast ${kind}` }, message);
+  const el = h('div', { class: `toast ${kind}`, role: 'status', 'aria-live': 'polite' }, message);
   $('#toasts').appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 3600);
 }
 
+let modalSeq = 0;
 export function modal({ title, subtitle, body, confirmText = 'Save', onConfirm, wide }) {
   const root = $('#modal-root');
-  const close = () => { root.innerHTML = ''; };
+  const previouslyFocused = document.activeElement;
+  const titleId = `modal-title-${++modalSeq}`;
+  const close = () => {
+    root.innerHTML = '';
+    document.removeEventListener('keydown', onKeydown, true);
+    previouslyFocused?.focus?.();
+  };
+  const onKeydown = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key !== 'Tab') return;
+    const focusables = root.querySelectorAll('button, input, select, textarea, a[href]');
+    if (!focusables.length) return;
+    const first = focusables[0], last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener('keydown', onKeydown, true);
   const form = h('div', {}, body);
-  const errBox = h('div');
+  const errBox = h('div', { role: 'alert', 'aria-live': 'assertive' });
   const confirmBtn = h('button', {
     class: 'btn-primary',
     onclick: async () => {
@@ -69,8 +86,11 @@ export function modal({ title, subtitle, body, confirmText = 'Save', onConfirm, 
   }, confirmText);
 
   root.appendChild(h('div', { class: 'modal-bg', onclick: (e) => e.target.classList.contains('modal-bg') && close() },
-    h('div', { class: 'modal', style: wide ? 'max-width:760px' : '' },
-      h('h3', {}, title),
+    h('div', {
+      class: 'modal', style: wide ? 'max-width:760px' : '',
+      role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId,
+    },
+      h('h3', { id: titleId }, title),
       subtitle && h('p', { class: 'muted small' }, subtitle),
       errBox, form,
       h('div', { class: 'actions' },
@@ -104,7 +124,12 @@ export const ago = (s) => {
 export const money = (n, c = 'INR') =>
   new Intl.NumberFormat(c === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n || 0);
 
-export const field = (label, input) => h('div', {}, h('label', {}, label), input);
+let fieldSeq = 0;
+export const field = (label, input) => {
+  const id = input.id || `f${++fieldSeq}`;
+  input.id = id;
+  return h('div', {}, h('label', { for: id }, label), input);
+};
 export const can = (perm) => {
   const P = {
     viewer: ['read'], content_editor: ['read', 'content:write'],

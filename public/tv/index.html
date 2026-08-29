@@ -39,11 +39,11 @@
 </head>
 <body>
 
-<div id="pair">
+<div id="pair" role="status" aria-live="polite" aria-label="Screen pairing">
   <div class="brand">Brandcast TV</div>
   <div class="hint">Enter this code in your Brandcast dashboard to pair this screen.</div>
-  <div class="code" id="code">----</div>
-  <div class="timer" id="timer">3:00</div>
+  <div class="code" id="code" aria-label="Pairing code">----</div>
+  <div class="timer" id="timer" aria-label="Time remaining">3:00</div>
   <div class="meta" id="meta"></div>
 </div>
 
@@ -102,7 +102,8 @@
       tick(); otpTimer = setInterval(tick, 1000);
 
       pollTimer = setInterval(async () => {
-        const s = await fetch(`${API}/api/pairing/status/${data.code}`).then((x) => x.json()).catch(() => null);
+        const s = await fetch(`${API}/api/pairing/status/${data.code}?device_id=${encodeURIComponent(deviceId)}`)
+            .then((x) => x.json()).catch(() => null);
         if (s?.status === 'paired') {
           clearInterval(pollTimer); clearInterval(otpTimer);
           token = s.device_token;

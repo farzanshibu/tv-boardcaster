@@ -4,6 +4,7 @@ import { requireAuth, requirePerm, requireDevice, audit, signDevice, branchAllow
 import { limitCheck } from '../lib/plans.js';
 import { buildPayload, publishToScreen, publishToScreens, resolveScreenContent } from '../lib/content.js';
 import * as hub from '../lib/hub.js';
+import { pairingLimiter } from '../lib/ratelimit.js';
 
 export const router = express.Router();
 
@@ -13,7 +14,7 @@ const otp4 = () => String(Math.floor(1000 + Math.random() * 9000));
 /* ================= pairing ================= */
 
 /** TV app requests a pairing code. */
-router.post('/pairing/generate-otp', (req, res) => {
+router.post('/pairing/generate-otp', pairingLimiter, (req, res) => {
   const { device_id = uid('dev'), metadata = {} } = req.body || {};
   db.prepare("DELETE FROM pairings WHERE device_id=? AND claimed_at IS NULL").run(device_id);
   db.prepare("DELETE FROM pairings WHERE expires_at < ? AND claimed_at IS NULL").run(now());
@@ -28,10 +29,14 @@ router.post('/pairing/generate-otp', (req, res) => {
   res.status(201).json({ code, device_id, expires_at, expires_in_seconds: Math.round(OTP_TTL_MS / 1000) });
 });
 
-/** TV app polls to learn it has been claimed (fallback when WS not yet open). */
+/** TV app polls to learn it has been claimed (fallback when WS not yet open).
+ *  Requires the caller's own device_id: the response carries the device token,
+ *  so knowing only the 4-digit code must never be enough to claim it. */
 router.get('/pairing/status/:code', (req, res) => {
   const p = db.prepare('SELECT * FROM pairings WHERE code=?').get(req.params.code);
   if (!p) return res.status(404).json({ error: 'not_found' });
+  const deviceId = req.query.device_id || req.headers['x-device-id'];
+  if (!deviceId || deviceId !== p.device_id) return res.status(403).json({ error: 'device_mismatch' });
   if (!p.claimed_at && p.expires_at < now()) return res.status(410).json({ error: 'expired' });
   res.json(p.claimed_at
     ? { status: 'paired', screen_id: p.screen_id, device_token: p.device_token }
@@ -39,7 +44,7 @@ router.get('/pairing/status/:code', (req, res) => {
 });
 
 /** Dashboard verifies OTP: returns the pending device so the Add Screen modal can be filled. */
-router.post('/pairing/verify', requireAuth, requirePerm('screen:write'), (req, res) => {
+router.post('/pairing/verify', pairingLimiter, requireAuth, requirePerm('screen:write'), (req, res) => {
   const code = String(req.body?.code || '');
   const p = db.prepare('SELECT * FROM pairings WHERE code=?').get(code);
   if (!p || p.claimed_at) return res.status(404).json({ error: 'invalid_code' });

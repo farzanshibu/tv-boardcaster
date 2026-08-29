@@ -7,7 +7,7 @@ import { requireAuth, requirePerm, audit } from '../lib/auth.js';
 
 export const router = express.Router();
 
-const UPLOAD_DIR = path.join(ROOT, 'uploads');
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(ROOT, 'uploads');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const MAX_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 200 * 1024 * 1024);

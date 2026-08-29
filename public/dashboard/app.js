@@ -1,29 +1,32 @@
 import { h, api, state, toast, logout, can, describe } from './core.js';
+import { t, locale, setLocale, LOCALES, applyDocumentLocale } from './i18n.js';
 import { LoginView, DashboardView, ScreensView } from './views-core.js';
 import { MediaView, PlaylistsView, TickersView, BranchesView } from './views-content.js';
 import { SchedulesView, AnalyticsView, TeamView, BillingView, SettingsView, AuditView, SuperadminView, AcceptInviteView } from './views-ops.js';
 
 const ROUTES = {
-  '/dashboard':  { title: 'Overview',            view: DashboardView,  icon: '▦' },
-  '/screens':    { title: 'Screens',             view: ScreensView,    icon: '▶' },
-  '/media':      { title: 'Media Library',       view: MediaView,      icon: '◈' },
-  '/playlists':  { title: 'Playlists',           view: PlaylistsView,  icon: '≣' },
-  '/tickers':    { title: 'Flash News',          view: TickersView,    icon: '⟿' },
-  '/schedules':  { title: 'Scheduling',          view: SchedulesView,  icon: '◷' },
-  '/branches':   { title: 'Branches',            view: BranchesView,   icon: '⌂' },
-  '/analytics':  { title: 'Analytics',           view: AnalyticsView,  icon: '◔' },
-  '/team':       { title: 'Team & Roles',        view: TeamView,       icon: '👥' },
-  '/billing':    { title: 'Billing',             view: BillingView,    icon: '₹',  perm: 'billing:write' },
-  '/audit':      { title: 'Audit Log',           view: AuditView,      icon: '⎙',  perm: 'org:write' },
-  '/settings':   { title: 'Settings',            view: SettingsView,   icon: '⚙' },
-  '/admin':      { title: 'Platform Admin',      view: SuperadminView, icon: '★',  superadmin: true },
+  '/dashboard':  { key: 'nav.overview',  view: DashboardView,  icon: '▦' },
+  '/screens':    { key: 'nav.screens',   view: ScreensView,    icon: '▶' },
+  '/media':      { key: 'nav.media',     view: MediaView,      icon: '◈' },
+  '/playlists':  { key: 'nav.playlists', view: PlaylistsView,  icon: '≣' },
+  '/tickers':    { key: 'nav.tickers',   view: TickersView,    icon: '⟿' },
+  '/schedules':  { key: 'nav.schedules', view: SchedulesView,  icon: '◷' },
+  '/branches':   { key: 'nav.branches',  view: BranchesView,   icon: '⌂' },
+  '/analytics':  { key: 'nav.analytics', view: AnalyticsView,  icon: '◔' },
+  '/team':       { key: 'nav.team',      view: TeamView,       icon: '👥' },
+  '/billing':    { key: 'nav.billing',   view: BillingView,    icon: '₹',  perm: 'billing:write' },
+  '/audit':      { key: 'nav.audit',     view: AuditView,      icon: '⎙',  perm: 'org:write' },
+  '/settings':   { key: 'nav.settings',  view: SettingsView,   icon: '⚙' },
+  '/admin':      { key: 'nav.admin',     view: SuperadminView, icon: '★',  superadmin: true },
 };
 
 const NAV = [
-  { sep: 'Operate', items: ['/dashboard', '/screens', '/schedules', '/analytics'] },
-  { sep: 'Content', items: ['/media', '/playlists', '/tickers'] },
-  { sep: 'Organization', items: ['/branches', '/team', '/billing', '/audit', '/settings'] },
+  { sep: 'nav.operate', items: ['/dashboard', '/screens', '/schedules', '/analytics'] },
+  { sep: 'nav.content', items: ['/media', '/playlists', '/tickers'] },
+  { sep: 'nav.org', items: ['/branches', '/team', '/billing', '/audit', '/settings'] },
 ];
+
+const titleOf = (r) => t(r.key);
 
 const root = () => document.getElementById('root');
 const path = () => (location.hash.slice(1) || '/dashboard').split('?')[0];
@@ -45,35 +48,47 @@ async function render() {
   if (route.superadmin && !isSuper) return (location.hash = '/dashboard');
   if (route.perm && !can(route.perm)) return (location.hash = '/dashboard');
 
-  const body = h('div', { class: 'content' }, h('div', { class: 'muted' }, 'Loading…'));
+  const body = h('div', { class: 'content', role: 'region', 'aria-live': 'polite', 'aria-busy': 'true', tabindex: '-1' },
+    h('div', { class: 'muted' }, t('common.loading')));
 
   const nav = NAV.map((group) => [
-    h('div', { class: 'nav-sep' }, group.sep),
+    h('div', { class: 'nav-sep' }, t(group.sep)),
     group.items.filter((key) => {
       const r = ROUTES[key];
       return !(r.perm && !can(r.perm));
     }).map((key) => h('button', {
       class: `nav-item ${key === p ? 'active' : ''}`,
       onclick: () => (location.hash = key),
-    }, h('span', {}, ROUTES[key].icon), ROUTES[key].title)),
+      'aria-current': key === p ? 'page' : null,
+    }, h('span', { 'aria-hidden': 'true' }, ROUTES[key].icon), titleOf(ROUTES[key]))),
   ]);
 
   root().innerHTML = '';
+  root().appendChild(h('a', { href: '#main-content', class: 'skip-link' }, t('action.skip')));
   root().appendChild(h('div', { class: 'app' },
-    h('div', { class: 'sidebar' },
+    h('nav', { class: 'sidebar', 'aria-label': 'Main navigation' },
       h('div', { class: 'brand' }, 'Brandcast TV'),
       nav,
-      isSuper ? [h('div', { class: 'nav-sep' }, 'Platform'),
-        h('button', { class: `nav-item ${p === '/admin' ? 'active' : ''}`, onclick: () => (location.hash = '/admin') }, h('span', {}, '★'), 'Platform Admin')] : null,
+      isSuper ? [h('div', { class: 'nav-sep' }, t('nav.platform')),
+        h('button', {
+          class: `nav-item ${p === '/admin' ? 'active' : ''}`,
+          onclick: () => (location.hash = '/admin'),
+          'aria-current': p === '/admin' ? 'page' : null,
+        }, h('span', { 'aria-hidden': 'true' }, '★'), t('nav.admin'))] : null,
       h('div', { class: 'spacer' }),
-      h('a', { class: 'nav-item', href: '/tv', target: '_blank' }, h('span', {}, '⧉'), 'Open TV player'),
-      h('button', { class: 'nav-item', onclick: logout }, h('span', {}, '⏻'), 'Sign out')),
+      h('a', { class: 'nav-item', href: '/tv', target: '_blank' }, h('span', { 'aria-hidden': 'true' }, '⧉'), t('action.opentv')),
+      h('button', { class: 'nav-item', onclick: logout }, h('span', { 'aria-hidden': 'true' }, '⏻'), t('action.signout'))),
 
-    h('div', { class: 'main' },
-      h('div', { class: 'topbar' },
-        h('div', {}, h('h2', {}, route.title),
+    h('main', { class: 'main', id: 'main-content' },
+      h('header', { class: 'topbar' },
+        h('div', {}, h('h2', {}, titleOf(route)),
           state.me.org && h('div', { class: 'tiny muted' }, `${state.me.org.name} · ${state.me.plan.name}`)),
         h('div', { class: 'right' },
+          h('select', {
+            'aria-label': t('common.language'), class: 'lang-select',
+            onchange: (e) => { setLocale(e.target.value); render(); },
+          }, Object.entries(LOCALES).map(([code, label]) =>
+            h('option', { value: code, selected: code === locale ? 'true' : null }, label))),
           state.impersonating || state.me.impersonating
             ? h('span', { class: 'badge warn' }, 'Support session') : null,
           h('span', { class: 'badge' }, state.me.user.role),
@@ -84,9 +99,12 @@ async function render() {
     const node = await route.view(() => { state.me = null; render(); });
     body.innerHTML = '';
     body.appendChild(node);
+    body.setAttribute('aria-busy', 'false');
+    document.title = `${titleOf(route)} — Brandcast TV`;
   } catch (e) {
     body.innerHTML = '';
-    body.appendChild(h('div', { class: 'err' }, describe(e)));
+    body.setAttribute('aria-busy', 'false');
+    body.appendChild(h('div', { class: 'err', role: 'alert' }, describe(e)));
   }
 }
 
@@ -106,5 +124,6 @@ function connectLive() {
   ws.onclose = () => { state.ws = null; setTimeout(() => state.token && connectLive(), 5000); };
 }
 
+applyDocumentLocale();
 window.addEventListener('hashchange', render);
 render();

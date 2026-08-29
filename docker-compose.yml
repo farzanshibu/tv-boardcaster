@@ -1,0 +1,46 @@
+services:
+  brandcast:
+    build: .
+    image: brandcast-tv:1.0.0
+    container_name: brandcast-tv
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DB_PATH: /data/brandcast.db
+      UPLOAD_DIR: /app/uploads
+      # CHANGE THIS before exposing the service to a network.
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      SESSION_TTL: ${SESSION_TTL:-12h}
+      OTP_TTL_MS: ${OTP_TTL_MS:-180000}
+      OFFLINE_AFTER_MS: ${OFFLINE_AFTER_MS:-90000}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-209715200}
+      RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}
+      RATE_LIMIT_SIGNUP: ${RATE_LIMIT_SIGNUP:-5}
+      ISSUER_GSTIN: ${ISSUER_GSTIN:-29AABCB1234C1ZX}
+    volumes:
+      - brandcast-data:/data
+      - brandcast-uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 10s
+
+  # One-shot demo data loader:  docker compose --profile seed run --rm seed
+  seed:
+    build: .
+    image: brandcast-tv:1.0.0
+    profiles: ["seed"]
+    environment:
+      DB_PATH: /data/brandcast.db
+    volumes:
+      - brandcast-data:/data
+    command: ["node", "scripts/seed.js"]
+
+volumes:
+  brandcast-data:
+  brandcast-uploads:

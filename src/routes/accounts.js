@@ -4,11 +4,12 @@ import {
   hash, check, signUser, requireAuth, requirePerm, audit, totpSecret, totpVerify, ROLES,
 } from '../lib/auth.js';
 import { PLANS, usage, planOf, limitCheck } from '../lib/plans.js';
+import { authLimiter, signupLimiter, resetLimit } from '../lib/ratelimit.js';
 
 export const router = express.Router();
 
 /* ---------- signup: creates tenant + owner + trial subscription ---------- */
-router.post('/auth/signup', (req, res) => {
+router.post('/auth/signup', signupLimiter, (req, res) => {
   const { name, email, password, org_name, country = 'IN' } = req.body || {};
   if (!name || !email || !password || !org_name)
     return res.status(400).json({ error: 'name, email, password, org_name required' });
@@ -40,7 +41,7 @@ export const publicUser = (u) => ({
   two_factor: !!u.totp_secret,
 });
 
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', authLimiter, (req, res) => {
   const { email, password, totp } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email || '');
   if (!user || !check(password || '', user.password_hash) || user.status !== 'active')
@@ -52,11 +53,12 @@ router.post('/auth/login', (req, res) => {
     if (!totp) return res.status(401).json({ error: 'totp_required' });
     if (!totpVerify(user.totp_secret, totp)) return res.status(401).json({ error: 'invalid_totp' });
   }
+  resetLimit(req, 'auth', (email || '').toLowerCase());
   res.json({ token: signUser(user), user: publicUser(user) });
 });
 
 /* ---------- SSO (Google Workspace / Entra) simulated exchange ---------- */
-router.post('/auth/sso', (req, res) => {
+router.post('/auth/sso', authLimiter, (req, res) => {
   const { email, provider = 'google' } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email || '');
   if (!user) return res.status(401).json({ error: 'sso_user_not_provisioned' });
@@ -67,7 +69,7 @@ router.post('/auth/sso', (req, res) => {
 
 /* ---------- password reset ---------- */
 const resetTokens = new Map();
-router.post('/auth/forgot-password', (req, res) => {
+router.post('/auth/forgot-password', authLimiter, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(req.body?.email || '');
   if (!user) return res.json({ ok: true }); // no enumeration
   const token = uid('rst');

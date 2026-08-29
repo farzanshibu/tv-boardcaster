@@ -34,7 +34,7 @@ app.use('/api', schedules);
 app.use('/api', insights);
 app.use('/api', superadmin);
 
-app.use('/uploads', express.static(path.join(ROOT, 'uploads'), { maxAge: '7d', immutable: true }));
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(ROOT, 'uploads'), { maxAge: '7d', immutable: true }));
 app.use(express.static(path.join(ROOT, 'public')));
 app.get('/tv', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'tv', 'index.html')));
 app.get(/^\/(?!api|uploads).*/, (_req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
