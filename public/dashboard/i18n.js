@@ -42,6 +42,15 @@ const STRINGS = {
     'analytics.top_media': 'Top media by plays', 'analytics.playlist_perf': 'Playlist performance',
     'admin.tenants': 'Tenants', 'admin.health': 'Platform health', 'admin.support_login': 'Support login',
     'audit.title': 'Audit log',
+    'auth.signin': 'Sign in', 'auth.signup_title': 'Start your free trial',
+    'auth.signin_sub': 'Manage your screens, playlists and campaigns.',
+    'auth.signup_sub': 'Create your organization and pair your first screen in minutes.',
+    'auth.name': 'Your name', 'auth.org': 'Organization', 'auth.country': 'Country',
+    'auth.email': 'Email', 'auth.password': 'Password', 'auth.totp': 'Authenticator code',
+    'auth.create': 'Create account', 'auth.have_account': 'I already have an account',
+    'auth.need_account': 'Create an account', 'auth.open_tv': 'Open TV player',
+    'invite.title': 'Accept your invite', 'invite.sub': 'Set up your account to join the organization.',
+    'invite.join': 'Join organization', 'invite.password_hint': 'Choose a password (8+ chars)',
   },
   hi: {
     'nav.operate': 'संचालन', 'nav.content': 'सामग्री', 'nav.org': 'संगठन', 'nav.platform': 'प्लेटफ़ॉर्म',
@@ -72,6 +81,15 @@ const STRINGS = {
     'analytics.top_media': 'शीर्ष मीडिया', 'analytics.playlist_perf': 'प्लेलिस्ट प्रदर्शन',
     'admin.tenants': 'किरायेदार', 'admin.health': 'प्लेटफ़ॉर्म स्वास्थ्य', 'admin.support_login': 'सहायता लॉगिन',
     'audit.title': 'ऑडिट लॉग',
+    'auth.signin': 'साइन इन करें', 'auth.signup_title': 'निःशुल्क ट्रायल शुरू करें',
+    'auth.signin_sub': 'अपनी स्क्रीन, प्लेलिस्ट और अभियान प्रबंधित करें।',
+    'auth.signup_sub': 'अपना संगठन बनाएँ और मिनटों में पहली स्क्रीन जोड़ें।',
+    'auth.name': 'आपका नाम', 'auth.org': 'संगठन', 'auth.country': 'देश',
+    'auth.email': 'ईमेल', 'auth.password': 'पासवर्ड', 'auth.totp': 'प्रमाणक कोड',
+    'auth.create': 'खाता बनाएँ', 'auth.have_account': 'मेरे पास पहले से खाता है',
+    'auth.need_account': 'खाता बनाएँ', 'auth.open_tv': 'टीवी प्लेयर खोलें',
+    'invite.title': 'अपना आमंत्रण स्वीकारें', 'invite.sub': 'संगठन में शामिल होने के लिए खाता सेट करें।',
+    'invite.join': 'संगठन में शामिल हों', 'invite.password_hint': 'पासवर्ड चुनें (8+ अक्षर)',
   },
   ta: {
     'nav.operate': 'செயல்பாடு', 'nav.content': 'உள்ளடக்கம்', 'nav.org': 'நிறுவனம்', 'nav.platform': 'தளம்',
@@ -102,6 +120,15 @@ const STRINGS = {
     'analytics.top_media': 'சிறந்த ஊடகம்', 'analytics.playlist_perf': 'பிளேலிஸ்ட் செயல்திறன்',
     'admin.tenants': 'குத்தகைதாரர்கள்', 'admin.health': 'தள ஆரோக்கியம்', 'admin.support_login': 'ஆதரவு உள்நுழைவு',
     'audit.title': 'தணிக்கை பதிவு',
+    'auth.signin': 'உள்நுழை', 'auth.signup_title': 'இலவச சோதனையைத் தொடங்கு',
+    'auth.signin_sub': 'உங்கள் திரைகள், பிளேலிஸ்ட் மற்றும் பிரச்சாரங்களை நிர்வகிக்கவும்.',
+    'auth.signup_sub': 'உங்கள் நிறுவனத்தை உருவாக்கி முதல் திரையை இணைக்கவும்.',
+    'auth.name': 'உங்கள் பெயர்', 'auth.org': 'நிறுவனம்', 'auth.country': 'நாடு',
+    'auth.email': 'மின்னஞ்சல்', 'auth.password': 'கடவுச்சொல்', 'auth.totp': 'அங்கீகார குறியீடு',
+    'auth.create': 'கணக்கை உருவாக்கு', 'auth.have_account': 'ஏற்கனவே கணக்கு உள்ளது',
+    'auth.need_account': 'கணக்கை உருவாக்கு', 'auth.open_tv': 'டிவி பிளேயரைத் திற',
+    'invite.title': 'அழைப்பை ஏற்கவும்', 'invite.sub': 'நிறுவனத்தில் சேர கணக்கை அமைக்கவும்.',
+    'invite.join': 'நிறுவனத்தில் சேர்', 'invite.password_hint': 'கடவுச்சொல் (8+ எழுத்துகள்)',
   },
   kn: {
     'nav.operate': 'ಕಾರ್ಯಾಚರಣೆ', 'nav.content': 'ವಿಷಯ', 'nav.org': 'ಸಂಸ್ಥೆ', 'nav.platform': 'ವೇದಿಕೆ',
@@ -132,6 +159,15 @@ const STRINGS = {
     'analytics.top_media': 'ಪ್ರಮುಖ ಮಾಧ್ಯಮ', 'analytics.playlist_perf': 'ಪ್ಲೇಪಟ್ಟಿ ಕಾರ್ಯಕ್ಷಮತೆ',
     'admin.tenants': 'ಬಾಡಿಗೆದಾರರು', 'admin.health': 'ವೇದಿಕೆ ಆರೋಗ್ಯ', 'admin.support_login': 'ಬೆಂಬಲ ಲಾಗಿನ್',
     'audit.title': 'ಲೆಕ್ಕಪರಿಶೋಧನೆ',
+    'auth.signin': 'ಸೈನ್ ಇನ್', 'auth.signup_title': 'ಉಚಿತ ಪ್ರಯೋಗ ಆರಂಭಿಸಿ',
+    'auth.signin_sub': 'ನಿಮ್ಮ ಪರದೆಗಳು, ಪ್ಲೇಪಟ್ಟಿ ಮತ್ತು ಅಭಿಯಾನಗಳನ್ನು ನಿರ್ವಹಿಸಿ.',
+    'auth.signup_sub': 'ನಿಮ್ಮ ಸಂಸ್ಥೆಯನ್ನು ರಚಿಸಿ ಮತ್ತು ಮೊದಲ ಪರದೆಯನ್ನು ಜೋಡಿಸಿ.',
+    'auth.name': 'ನಿಮ್ಮ ಹೆಸರು', 'auth.org': 'ಸಂಸ್ಥೆ', 'auth.country': 'ದೇಶ',
+    'auth.email': 'ಇಮೇಲ್', 'auth.password': 'ಪಾಸ್‌ವರ್ಡ್', 'auth.totp': 'ದೃಢೀಕರಣ ಕೋಡ್',
+    'auth.create': 'ಖಾತೆ ರಚಿಸಿ', 'auth.have_account': 'ನನಗೆ ಈಗಾಗಲೇ ಖಾತೆ ಇದೆ',
+    'auth.need_account': 'ಖಾತೆ ರಚಿಸಿ', 'auth.open_tv': 'ಟಿವಿ ಪ್ಲೇಯರ್ ತೆರೆಯಿರಿ',
+    'invite.title': 'ಆಹ್ವಾನ ಸ್ವೀಕರಿಸಿ', 'invite.sub': 'ಸಂಸ್ಥೆಗೆ ಸೇರಲು ಖಾತೆ ಹೊಂದಿಸಿ.',
+    'invite.join': 'ಸಂಸ್ಥೆಗೆ ಸೇರಿ', 'invite.password_hint': 'ಪಾಸ್‌ವರ್ಡ್ ಆಯ್ಕೆಮಾಡಿ (8+)',
   },
   ar: {
     'nav.operate': 'التشغيل', 'nav.content': 'المحتوى', 'nav.org': 'المؤسسة', 'nav.platform': 'المنصة',
@@ -162,6 +198,15 @@ const STRINGS = {
     'analytics.top_media': 'أفضل الوسائط', 'analytics.playlist_perf': 'أداء قائمة التشغيل',
     'admin.tenants': 'المستأجرون', 'admin.health': 'صحة المنصة', 'admin.support_login': 'دخول الدعم',
     'audit.title': 'سجل التدقيق',
+    'auth.signin': 'تسجيل الدخول', 'auth.signup_title': 'ابدأ تجربتك المجانية',
+    'auth.signin_sub': 'أدر شاشاتك وقوائم التشغيل والحملات.',
+    'auth.signup_sub': 'أنشئ مؤسستك واقرن أول شاشة خلال دقائق.',
+    'auth.name': 'اسمك', 'auth.org': 'المؤسسة', 'auth.country': 'الدولة',
+    'auth.email': 'البريد الإلكتروني', 'auth.password': 'كلمة المرور', 'auth.totp': 'رمز المصادقة',
+    'auth.create': 'إنشاء حساب', 'auth.have_account': 'لدي حساب بالفعل',
+    'auth.need_account': 'إنشاء حساب', 'auth.open_tv': 'فتح مشغل التلفاز',
+    'invite.title': 'اقبل دعوتك', 'invite.sub': 'أعد حسابك للانضمام إلى المؤسسة.',
+    'invite.join': 'انضم إلى المؤسسة', 'invite.password_hint': 'اختر كلمة مرور (8+ أحرف)',
   },
 };
 
@@ -193,5 +238,5 @@ export function t(key, vars) {
   return s;
 }
 
-/** Locale-aware number/date formatting. */
+/** Locale-aware number formatting (money() in core.js layers currency on top). */
 export const fmtNumber = (n) => new Intl.NumberFormat(locale).format(n ?? 0);

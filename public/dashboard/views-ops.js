@@ -501,17 +501,17 @@ export async function SuperadminView(rerender) {
 export function AcceptInviteView() {
   const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token');
   const name = h('input', { placeholder: 'Your name' });
-  const pw = h('input', { type: 'password', placeholder: 'Choose a password (8+ chars)' });
+  const pw = h('input', { type: 'password', placeholder: tr('invite.password_hint') });
   const err = h('div');
   return h('div', { class: 'auth-wrap' }, h('div', { class: 'auth-card' },
     h('div', { class: 'logo' }, 'Brandcast TV'),
-    h('h1', {}, 'Accept your invite'),
-    h('p', { class: 'sub' }, 'Set up your account to join the organization.'),
-    err, field('Name', name), field('Password', pw),
+    h('h1', {}, tr('invite.title')),
+    h('p', { class: 'sub' }, tr('invite.sub')),
+    err, field(tr('auth.name'), name), field(tr('auth.password'), pw),
     h('button', { class: 'btn-primary mt', style: 'width:100%', onclick: async () => {
       try {
         const r = await api('/users/accept-invite', { method: 'POST', body: { token, name: name.value, password: pw.value } });
         setToken(r.token); location.hash = '/dashboard'; location.reload();
       } catch (e) { err.innerHTML = ''; err.appendChild(h('div', { class: 'err' }, describe(e))); }
-    } }, 'Join organization')));
+    } }, tr('invite.join'))));
 }

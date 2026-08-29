@@ -191,6 +191,68 @@ test('the dashboard renders in Hindi and flips direction for Arabic', async () =
   Object.assign(g, saved);
 });
 
+test('locale choice persists across a reload', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
+  const w = dom.window;
+  const g = globalThis;
+  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator, location: g.location };
+  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage });
+  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
+  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
+
+  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
+  mod.setLocale('ta');
+  assert.equal(w.localStorage.getItem('bc_locale'), 'ta', 'choice is persisted for the next visit');
+
+  mod.setLocale('en');
+  Object.assign(g, saved);
+});
+
+test('an unknown or unsupported locale degrades to English', async () => {
+  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
+  mod.setLocale('zz');            // not shipped: must be ignored, not crash
+  assert.equal(mod.t('nav.screens'), 'Screens');
+  mod.setLocale('en');
+});
+
+test('currency follows the org but digits follow the reader', async () => {
+  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
+  const w = dom.window;
+  const g = globalThis;
+  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator, location: g.location };
+  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage });
+  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
+  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
+
+  const i18n = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
+  const core = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/core.js')).href);
+
+  i18n.setLocale('en');
+  const en = core.money(123456, 'INR');
+  assert.match(en, /1,23,456/, 'INR uses the lakh grouping');
+  assert.match(en, /₹/);
+
+  i18n.setLocale('ar');
+  const ar = core.money(123456, 'INR');
+  assert.ok(ar.includes('₹'), 'currency symbol preserved in Arabic');
+  assert.notEqual(ar, en, 'Arabic formats differently from English');
+
+  i18n.setLocale('en');
+  Object.assign(g, saved);
+});
+
+test('stylesheet uses logical properties so RTL mirrors correctly', async () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public/dashboard/app.css'), 'utf8');
+  // strip comments, then look for direction-locked rules that would break RTL
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(body, /text-align:\s*(left|right)/, 'use text-align:start/end');
+  assert.doesNotMatch(body, /[;{]\s*(left|right):/, 'use inset-inline-* instead of left/right');
+  assert.doesNotMatch(body, /border-left:|border-right:/, 'use border-inline-*');
+  assert.match(body, /inset-inline/, 'logical inset properties present');
+});
+
 /* ---------- accessibility ---------- */
 
 test('the app shell exposes landmarks, a skip link and labelled nav', async () => {

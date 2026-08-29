@@ -1,5 +1,5 @@
 import { h, api, state, setToken, toast, modal, field, fmtDate, ago, can, describe, money } from './core.js';
-import { t as tr } from './i18n.js';
+import { t as tr, fmtNumber } from './i18n.js';
 
 /* ==================== AUTH ==================== */
 export function LoginView(navigate) {
@@ -32,23 +32,21 @@ export function LoginView(navigate) {
 
     wrap.appendChild(h('div', { class: 'auth-card' },
       h('div', { class: 'logo' }, 'Brandcast TV'),
-      h('h1', {}, mode === 'signup' ? 'Start your free trial' : 'Sign in'),
-      h('p', { class: 'sub' }, mode === 'signup'
-        ? 'Create your organization and pair your first screen in minutes.'
-        : 'Manage your screens, playlists and campaigns.'),
+      h('h1', {}, mode === 'signup' ? tr('auth.signup_title') : tr('auth.signin')),
+      h('p', { class: 'sub' }, mode === 'signup' ? tr('auth.signup_sub') : tr('auth.signin_sub')),
       err,
-      mode === 'signup' && field('Your name', inp('name', { placeholder: 'Riya Sharma', onkeydown: onKey })),
-      mode === 'signup' && field('Organization', inp('org', { placeholder: 'Acme Retail', onkeydown: onKey })),
-      mode === 'signup' && field('Country', f.country),
-      field('Email', inp('email', { type: 'email', placeholder: 'you@company.com', onkeydown: onKey })),
-      field('Password', inp('password', { type: 'password', placeholder: '••••••••', onkeydown: onKey })),
-      mode === 'totp' && field('Authenticator code', inp('totp', { placeholder: '123456', onkeydown: onKey })),
+      mode === 'signup' && field(tr('auth.name'), inp('name', { placeholder: 'Riya Sharma', onkeydown: onKey })),
+      mode === 'signup' && field(tr('auth.org'), inp('org', { placeholder: 'Acme Retail', onkeydown: onKey })),
+      mode === 'signup' && field(tr('auth.country'), f.country),
+      field(tr('auth.email'), inp('email', { type: 'email', placeholder: 'you@company.com', onkeydown: onKey })),
+      field(tr('auth.password'), inp('password', { type: 'password', placeholder: '••••••••', onkeydown: onKey })),
+      mode === 'totp' && field(tr('auth.totp'), inp('totp', { placeholder: '123456', onkeydown: onKey })),
       h('div', { class: 'mt' }, h('button', { class: 'btn-primary', style: 'width:100%', onclick: submit },
-        mode === 'signup' ? 'Create account' : 'Sign in')),
+        mode === 'signup' ? tr('auth.create') : tr('auth.signin'))),
       h('div', { class: 'row mt', style: 'justify-content:space-between' },
         h('button', { class: 'btn-ghost btn-sm', onclick: () => { mode = mode === 'signup' ? 'login' : 'signup'; render(); } },
-          mode === 'signup' ? 'I already have an account' : 'Create an account'),
-        h('a', { class: 'small', href: '/tv', target: '_blank' }, 'Open TV player →'))));
+          mode === 'signup' ? tr('auth.have_account') : tr('auth.need_account')),
+        h('a', { class: 'small', href: '/tv', target: '_blank' }, tr('auth.open_tv') + ' \u2192'))));
   };
   render();
   return wrap;
@@ -108,7 +106,8 @@ export async function DashboardView() {
 
 const stat = (k, v, d, tone) => h('div', { class: 'stat' },
   h('div', { class: 'k' }, k),
-  h('div', { class: 'v', style: tone === 'warn' ? 'color:var(--warn)' : tone === 'ok' ? 'color:var(--ok)' : '' }, String(v)),
+  h('div', { class: 'v', style: tone === 'warn' ? 'color:var(--warn)' : tone === 'ok' ? 'color:var(--ok)' : '' },
+    typeof v === 'number' ? fmtNumber(v) : String(v)),
   h('div', { class: 'd' }, d));
 
 /* ==================== SCREENS ==================== */

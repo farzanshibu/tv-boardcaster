@@ -1,4 +1,5 @@
 /* Brandcast TV dashboard — tiny reactive runtime, no build step. */
+import { locale } from './i18n.js';
 
 export const state = {
   token: localStorage.getItem('bc_token') || null,
@@ -121,8 +122,13 @@ export const ago = (s) => {
   if (d < 86400) return `${Math.round(d / 3600)}h ago`;
   return `${Math.round(d / 86400)}d ago`;
 };
-export const money = (n, c = 'INR') =>
-  new Intl.NumberFormat(c === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency: c, maximumFractionDigits: 0 }).format(n || 0);
+export const money = (n, c = 'INR') => {
+  // Currency comes from the org; digit grouping follows the reader's locale.
+  const region = c === 'INR' ? 'IN' : 'US';
+  return new Intl.NumberFormat(`${locale}-${region}`, {
+    style: 'currency', currency: c, maximumFractionDigits: 0,
+  }).format(n || 0);
+};
 
 let fieldSeq = 0;
 export const field = (label, input) => {

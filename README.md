@@ -117,7 +117,7 @@ tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
 ## Verification
 
 ```bash
-npm test    # 75 tests: 24 API/realtime + 21 feature depth + 13 non-functional + 17 UI
+npm test    # 80 tests: 24 API/realtime + 21 feature depth + 17 non-functional + 18 UI
 ```
 
 The suite runs against a real server and a real DOM. It covers the PRD acceptance
@@ -169,11 +169,15 @@ Measured against the PRD KPIs on a local run:
   `aria-current` on the active route, dialogs with focus trapping and Escape-to-close,
   labelled form controls, visible focus rings, and `prefers-reduced-motion` support.
   Body text sits at 16:1 contrast and muted text at 9.7:1 (AA needs 4.5:1).
-- **Localization** in English, Hindi, Tamil, Kannada and Arabic, with automatic RTL.
-  73 strings cover the navigation chrome and the primary view actions, headings and
-  empty states. Deeper strings (modal field labels, table headers, validation copy)
-  still fall back to English. Add a language by adding one block to
-  `public/dashboard/i18n.js`; a test fails if a locale omits any English key.
+- **Localization** in English, Hindi, Tamil, Kannada and Arabic. All 15 views render
+  translated, including the sign-in and invite screens, and the choice persists across
+  reloads. Arabic switches the document to RTL and the stylesheet uses logical
+  properties (`inset-inline-*`, `text-align:start`) so the layout mirrors correctly.
+  Currency follows the organization while digit grouping follows the reader.
+  91 strings cover navigation, primary actions, headings and empty states; deeper
+  copy (modal field labels, table headers, validation messages) still falls back to
+  English. Add a language with one block in `public/dashboard/i18n.js` — tests fail if
+  a locale omits any English key or if any view stops rendering translated.
 
 ## Production notes
 

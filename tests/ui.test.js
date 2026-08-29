@@ -287,6 +287,34 @@ test('views render in the selected language, not just the nav chrome', async () 
   ctx.restore();
 });
 
+test('EVERY view renders localized, not just the sampled few', async () => {
+  const ctx = await boot();
+  const i18n = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
+
+  // Views that take a rerender callback and fetch their own data.
+  const views = [
+    'DashboardView', 'ScreensView', 'MediaView', 'PlaylistsView', 'TickersView',
+    'SchedulesView', 'BranchesView', 'AnalyticsView', 'TeamView', 'BillingView',
+    'SettingsView', 'AuditView',
+  ];
+
+  i18n.setLocale('hi');
+  const devanagari = /[\u0900-\u097F]/;
+  const failures = [];
+  for (const name of views) {
+    const node = await ctx.views[name](() => {});
+    if (!devanagari.test(node.textContent)) failures.push(name);
+  }
+  // static views take no arguments
+  for (const name of ['LoginView', 'AcceptInviteView']) {
+    const node = ctx.views[name]();
+    if (!devanagari.test(node.textContent)) failures.push(name);
+  }
+  i18n.setLocale('en');
+  ctx.restore();
+  assert.deepEqual(failures, [], `these views render no Hindi at all: ${failures.join(', ')}`);
+});
+
 test('every view module imports i18n and uses it', async () => {
   for (const f of ['views-core.js', 'views-content.js', 'views-ops.js', 'app.js']) {
     const src = fs.readFileSync(path.join(ROOT, 'public/dashboard', f), 'utf8');
