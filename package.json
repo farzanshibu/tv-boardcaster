@@ -7,9 +7,13 @@
     "test": "tests"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "seed": "node scripts/seed.js",
-    "test": "node --test tests/*.test.js"
+    "start": "NODE_ENV=production bun server.js",
+    "dev": "bun server.js",
+    "build": "cd web && bun run build",
+    "seed": "bun scripts/seed.js",
+    "typecheck": "cd web && bun run typecheck",
+    "lint": "cd web && bun run lint",
+    "test": "bun test tests/"
   },
   "keywords": [],
   "author": "",
@@ -17,13 +21,16 @@
   "type": "module",
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "minio": "^8.0.7",
     "multer": "^2.3.0",
     "ws": "^8.21.3"
   },
   "devDependencies": {
     "jsdom": "^30.0.1"
-  }
+  },
+  "workspaces": [
+    "web"
+  ]
 }

@@ -9,6 +9,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+const BUN = process.env.BUN_PATH || 'bun';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4323;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -36,8 +37,8 @@ const upload = (bytes, filename, type, extra = {}) => {
 };
 
 test.before(async () => {
-  proc = spawn(process.execPath, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, DISABLE_RATE_LIMIT: '1' }, stdio: 'ignore',
+  proc = spawn(BUN, ['src/server.js'], {
+    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, DISABLE_RATE_LIMIT: '1', API_ONLY: '1', STORAGE_DRIVER: 'local' }, stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
     try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {}

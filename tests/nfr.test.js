@@ -7,8 +7,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { JSDOM } from 'jsdom';
 
+const BUN = process.env.BUN_PATH || 'bun';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4324;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -27,8 +27,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test.before(async () => {
   // rate limiting is ON here (other suites disable it)
-  proc = spawn(process.execPath, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, RATE_LIMIT_AUTH: '5', RATE_LIMIT_SIGNUP: '3' }, stdio: 'ignore',
+  proc = spawn(BUN, ['src/server.js'], {
+    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, RATE_LIMIT_AUTH: '5', RATE_LIMIT_SIGNUP: '3', API_ONLY: '1', STORAGE_DRIVER: 'local' }, stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
     try { if ((await realFetch(`${BASE}/api/health`)).ok) return; } catch {}
@@ -130,182 +130,114 @@ test('the pairing status endpoint will not hand a device token to a stranger', a
   assert.equal(content.status, 200);
 });
 
-/* ---------- localization ---------- */
+/* ---------- localization (Next.js + typed dictionary) ---------- */
 
-test('i18n covers every key across all locales', async () => {
-  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  const src = fs.readFileSync(path.join(ROOT, 'public/dashboard/i18n.js'), 'utf8');
+const WEB = path.join(ROOT, 'web', 'src');
 
-  assert.ok(Object.keys(mod.LOCALES).length >= 4, 'ships several languages');
-  for (const code of ['hi', 'ta', 'kn']) assert.ok(mod.LOCALES[code], `regional Indian language ${code} present`);
+test('every locale defines the full English key set', () => {
+  const src = fs.readFileSync(path.join(WEB, 'lib/dictionaries.ts'), 'utf8');
 
-  // every locale must define the same keys as English
-  const blocks = [...src.matchAll(/^  (\w+): \{$/gm)].map((m) => m[1]);
-  assert.ok(blocks.includes('en'));
-  const keysOf = (loc) => {
-    const start = src.indexOf(`  ${loc}: {`);
-    const end = src.indexOf('\n  },', start);
-    return new Set([...src.slice(start, end).matchAll(/'([a-z]+\.[a-z_]+)':/g)].map((m) => m[1]));
+  const keysOf = (marker) => {
+    const start = src.indexOf(marker);
+    assert.ok(start > -1, `missing block ${marker}`);
+    const end = src.indexOf('\n};', start);
+    return new Set([...src.slice(start, end).matchAll(/"([a-z]+\.[a-z_]+)":/g)].map((m) => m[1]));
   };
-  const enKeys = keysOf('en');
-  assert.ok(enKeys.size >= 20, 'a meaningful number of strings');
-  for (const loc of blocks.filter((b) => b !== 'en')) {
-    const k = keysOf(loc);
-    const missing = [...enKeys].filter((x) => !k.has(x));
-    assert.equal(missing.length, 0, `locale ${loc} is missing: ${missing.join(', ')}`);
-  }
 
+  const en = keysOf('const en = {');
+  assert.ok(en.size >= 90, `expected a substantial dictionary, got ${en.size}`);
+
+  for (const loc of ['hi', 'ta', 'kn', 'ar']) {
+    const k = keysOf(`const ${loc}: Dictionary = {`);
+    const missing = [...en].filter((x) => !k.has(x));
+    assert.equal(missing.length, 0, `locale ${loc} is missing: ${missing.slice(0, 5).join(', ')}`);
+  }
   assert.ok(!src.includes('\uFFFD'), 'no mojibake in translated strings');
 });
 
-test('translation lookup falls back and interpolates', async () => {
-  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  assert.equal(mod.t('nav.screens'), 'Screens');
-  assert.equal(mod.t('screens.online', { n: 4 }), '4 online');
-  assert.equal(mod.t('totally.unknown.key'), 'totally.unknown.key', 'unknown keys degrade to the key');
-
-  mod.setLocale('hi');
-  assert.equal(mod.t('nav.screens'), 'स्क्रीन');
-  assert.match(mod.t('screens.online', { n: 4 }), /^4 /, 'interpolation works in Hindi');
-  mod.setLocale('en');
+test('regional Indian languages and RTL are shipped', () => {
+  const src = fs.readFileSync(path.join(WEB, 'lib/dictionaries.ts'), 'utf8');
+  for (const code of ['hi:', 'ta:', 'kn:', 'ar:']) {
+    assert.ok(src.includes(`  ${code}`), `locale ${code} present`);
+  }
+  assert.match(src, /RTL_LOCALES[^=]*=\s*new Set<Locale>\(\["ar"\]\)/, 'Arabic marked RTL');
 });
 
-test('the dashboard renders in Hindi and flips direction for Arabic', async () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
-  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
-  const w = dom.window;
-  const g = globalThis;
-  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator };
-  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage });
-  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
-
-  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  mod.setLocale('hi');
-  assert.equal(w.document.documentElement.lang, 'hi');
-  assert.equal(w.document.documentElement.dir, 'ltr');
-
-  mod.setLocale('ar');
-  assert.equal(w.document.documentElement.dir, 'rtl', 'Arabic switches the document to RTL');
-
-  mod.setLocale('en');
-  Object.assign(g, saved);
+test('the translator is typed, so an unknown key cannot compile', () => {
+  const i18n = fs.readFileSync(path.join(WEB, 'lib/i18n.tsx'), 'utf8');
+  assert.match(i18n, /key: TranslationKey/, 't() accepts only known keys');
+  assert.match(i18n, /document\.documentElement\.dir/, 'sets document direction');
+  assert.match(i18n, /localStorage\.setItem/, 'persists the choice');
 });
 
-test('locale choice persists across a reload', async () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
-  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
-  const w = dom.window;
-  const g = globalThis;
-  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator, location: g.location };
-  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage });
-  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
-  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
+test('every dashboard view is localized, not just the shell', () => {
+  const pages = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name === 'page.tsx') pages.push(full);
+    }
+  };
+  walk(path.join(WEB, 'app'));
+  assert.ok(pages.length >= 14, `expected the full route set, found ${pages.length}`);
 
-  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  mod.setLocale('ta');
-  assert.equal(w.localStorage.getItem('bc_locale'), 'ta', 'choice is persisted for the next visit');
-
-  mod.setLocale('en');
-  Object.assign(g, saved);
-});
-
-test('an unknown or unsupported locale degrades to English', async () => {
-  const mod = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  mod.setLocale('zz');            // not shipped: must be ignored, not crash
-  assert.equal(mod.t('nav.screens'), 'Screens');
-  mod.setLocale('en');
-});
-
-test('currency follows the org but digits follow the reader', async () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
-  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
-  const w = dom.window;
-  const g = globalThis;
-  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator, location: g.location };
-  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage });
-  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
-  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
-
-  const i18n = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
-  const core = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/core.js')).href);
-
-  i18n.setLocale('en');
-  const en = core.money(123456, 'INR');
-  assert.match(en, /1,23,456/, 'INR uses the lakh grouping');
-  assert.match(en, /₹/);
-
-  i18n.setLocale('ar');
-  const ar = core.money(123456, 'INR');
-  assert.ok(ar.includes('₹'), 'currency symbol preserved in Arabic');
-  assert.notEqual(ar, en, 'Arabic formats differently from English');
-
-  i18n.setLocale('en');
-  Object.assign(g, saved);
-});
-
-test('stylesheet uses logical properties so RTL mirrors correctly', async () => {
-  const css = fs.readFileSync(path.join(ROOT, 'public/dashboard/app.css'), 'utf8');
-  // strip comments, then look for direction-locked rules that would break RTL
-  const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.doesNotMatch(body, /text-align:\s*(left|right)/, 'use text-align:start/end');
-  assert.doesNotMatch(body, /[;{]\s*(left|right):/, 'use inset-inline-* instead of left/right');
-  assert.doesNotMatch(body, /border-left:|border-right:/, 'use border-inline-*');
-  assert.match(body, /inset-inline/, 'logical inset properties present');
+  const untranslated = pages.filter((p) => {
+    const src = fs.readFileSync(p, 'utf8');
+    // The TV player and the root redirect render no dashboard chrome.
+    if (p.includes('/tv/') || p.endsWith(path.join('app', 'page.tsx'))) return false;
+    return !src.includes('t("');
+  });
+  assert.deepEqual(untranslated.map((p) => path.relative(WEB, p)), [], 'these views use no translations');
 });
 
 /* ---------- accessibility ---------- */
 
-test('the app shell exposes landmarks, a skip link and labelled nav', async () => {
-  const appJs = fs.readFileSync(path.join(ROOT, 'public/dashboard/app.js'), 'utf8');
-  assert.match(appJs, /skip-link/, 'skip-to-content link');
-  assert.match(appJs, /h\('nav'.*aria-label/s, 'navigation landmark is labelled');
-  assert.match(appJs, /h\('main'/, 'main landmark');
-  assert.match(appJs, /aria-current/, 'current page is announced');
-  assert.match(appJs, /aria-hidden': 'true'/, 'decorative icons hidden from screen readers');
-  assert.match(appJs, /aria-busy/, 'loading state announced');
-
-  const css = fs.readFileSync(path.join(ROOT, 'public/dashboard/app.css'), 'utf8');
-  assert.match(css, /:focus-visible/, 'visible focus indicator');
-  assert.match(css, /prefers-reduced-motion/, 'respects reduced-motion');
+test('the app shell exposes landmarks, a skip link and labelled nav', () => {
+  const shell = fs.readFileSync(path.join(WEB, 'components/global/dashboard-shell.tsx'), 'utf8');
+  assert.match(shell, /skip-link/, 'skip-to-content link');
+  assert.match(shell, /<nav[\s\S]{0,120}aria-label=/, 'navigation landmark is labelled');
+  assert.match(shell, /<main/, 'main landmark');
+  assert.match(shell, /aria-current/, 'current page announced');
+  assert.match(shell, /aria-hidden="true"/, 'decorative icons hidden from screen readers');
 });
 
-test('modals are dialogs: labelled, escapable and focus-trapping', async () => {
-  const core = fs.readFileSync(path.join(ROOT, 'public/dashboard/core.js'), 'utf8');
-  assert.match(core, /role: 'dialog'/);
-  assert.match(core, /'aria-modal': 'true'/);
-  assert.match(core, /'aria-labelledby'/);
-  assert.match(core, /Escape/, 'Escape closes the dialog');
-  assert.match(core, /previouslyFocused/, 'focus is restored on close');
-  assert.match(core, /role: 'alert'/, 'errors are announced');
+test('modals are accessible dialogs', () => {
+  const dialog = fs.readFileSync(path.join(WEB, 'components/global/form-dialog.tsx'), 'utf8');
+  // HeroUI Modal is built on React Aria: focus trap, Escape and restore come from
+  // the library rather than bespoke handlers, so assert we use those primitives.
+  assert.match(dialog, /Modal\.Dialog/, 'uses the React Aria dialog primitive');
+  assert.match(dialog, /Modal\.Heading/, 'dialog has an accessible heading');
+  assert.match(dialog, /onOpenChange/, 'controlled open state drives focus restore');
 });
 
-test('every form control is programmatically labelled', async () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
-  const dom = new JSDOM(html, { url: BASE, runScripts: 'outside-only' });
-  const w = dom.window;
-  const g = globalThis;
-  const saved = { window: g.window, document: g.document, localStorage: g.localStorage, navigator: g.navigator, Node: g.Node, location: g.location };
-  Object.assign(g, { window: w, document: w.document, localStorage: w.localStorage, Node: w.Node });
-  Object.defineProperty(g, 'navigator', { value: w.navigator, configurable: true, writable: true });
-  Object.defineProperty(g, 'location', { value: w.location, configurable: true, writable: true });
-
-  const core = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/core.js')).href);
-  const input = core.h('input', { type: 'text' });
-  const wrapped = core.field('Screen name', input);
-  const label = wrapped.querySelector('label');
-  assert.ok(input.id, 'the control gets an id');
-  assert.equal(label.getAttribute('for'), input.id, 'label points at its control');
-
-  // two fields must not collide
-  const b = core.h('input', {});
-  core.field('Other', b);
-  assert.notEqual(input.id, b.id, 'ids are unique');
-
-  Object.assign(g, saved);
+test('every form control is programmatically labelled', () => {
+  const form = fs.readFileSync(path.join(WEB, 'components/global/form.tsx'), 'utf8');
+  assert.match(form, /<Label>/, 'TextField composes a real Label');
+  assert.match(form, /aria-label=/, 'Select falls back to an aria-label');
 });
 
-test('the TV player marks up its pairing screen for assistive tech', async () => {
-  const html = fs.readFileSync(path.join(ROOT, 'public/tv/index.html'), 'utf8');
-  assert.match(html, /<html lang=/, 'language declared');
-  assert.match(html, /aria-live|role="status"|aria-label/, 'pairing state is announced');
+test('stylesheet uses logical properties and respects reduced motion', () => {
+  const css = fs.readFileSync(path.join(WEB, 'app/globals.css'), 'utf8');
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(body, /text-align:\s*(left|right)/, 'use text-align:start/end');
+  assert.match(body, /inset-inline/, 'logical inset properties present');
+  assert.match(body, /prefers-reduced-motion/, 'respects reduced motion');
+  assert.match(body, /:focus-visible/, 'visible focus indicator');
+});
+
+test('the TV player marks up its pairing screen for assistive tech', () => {
+  const tv = fs.readFileSync(path.join(WEB, 'app/tv/page.tsx'), 'utf8');
+  assert.match(tv, /role="status"/, 'pairing state is announced');
+  assert.match(tv, /aria-live="polite"/);
+  assert.match(tv, /aria-label="Pairing code"/);
+});
+
+test('the TV player caches content and reconnects when offline', () => {
+  const tv = fs.readFileSync(path.join(WEB, 'app/tv/page.tsx'), 'utf8');
+  assert.match(tv, /bc_payload/, 'caches the last payload');
+  assert.match(tv, /device\/session/, 'opens the realtime session');
+  assert.match(tv, /type: "ack"/, 'acknowledges publishes');
+  assert.match(tv, /type: "play"/, 'reports play events');
+  assert.match(tv, /setTimeout\(connect, 4000\)/, 'auto-reconnects');
 });

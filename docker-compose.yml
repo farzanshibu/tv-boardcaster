@@ -1,39 +1,72 @@
 services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: brandcast-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-brandcast}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-brandcast-secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"   # S3 API — the CDN origin
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"  # web console
+    volumes:
+      - brandcast-objects:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   brandcast:
     build: .
-    image: brandcast-tv:1.0.0
+    image: brandcast-tv:2.0.0
     container_name: brandcast-tv
     restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
     ports:
       - "${PORT:-4000}:4000"
     environment:
       NODE_ENV: production
       PORT: 4000
       DB_PATH: /data/brandcast.db
-      UPLOAD_DIR: /app/uploads
+      UPLOAD_DIR: /data/uploads
+
       # CHANGE THIS before exposing the service to a network.
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       SESSION_TTL: ${SESSION_TTL:-12h}
       OTP_TTL_MS: ${OTP_TTL_MS:-180000}
       OFFLINE_AFTER_MS: ${OFFLINE_AFTER_MS:-90000}
-      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-209715200}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-524288000}
       RATE_LIMIT_AUTH: ${RATE_LIMIT_AUTH:-10}
       RATE_LIMIT_SIGNUP: ${RATE_LIMIT_SIGNUP:-5}
       ISSUER_GSTIN: ${ISSUER_GSTIN:-29AABCB1234C1ZX}
+
+      # Object storage. Inside the compose network MinIO is reachable by name.
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-brandcast}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-brandcast-secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-brandcast-media}
+      # Point this at your CDN in production so screens never hit the origin.
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
     volumes:
       - brandcast-data:/data
-      - brandcast-uploads:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
       interval: 30s
-      timeout: 4s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 25s
 
   # One-shot demo data loader:  docker compose --profile seed run --rm seed
   seed:
     build: .
-    image: brandcast-tv:1.0.0
+    image: brandcast-tv:2.0.0
     profiles: ["seed"]
     environment:
       DB_PATH: /data/brandcast.db
@@ -43,4 +76,4 @@ services:
 
 volumes:
   brandcast-data:
-  brandcast-uploads:
+  brandcast-objects:

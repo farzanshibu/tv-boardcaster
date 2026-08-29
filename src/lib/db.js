@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,9 +9,10 @@ export const ROOT = path.resolve(__dirname, '..', '..');
 const DB_PATH = process.env.DB_PATH || path.join(ROOT, 'data', 'brandcast.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-export const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+export const db = new Database(DB_PATH, { create: true });
+// bun:sqlite has no .pragma() helper; exec() is the equivalent.
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 export function migrate() {
   db.exec(`
@@ -76,6 +77,10 @@ export function migrate() {
     folder TEXT NOT NULL DEFAULT '/',
     version INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'approved',      -- draft|pending|approved
+    storage_key TEXT,                             -- object-storage key of the original
+    renditions TEXT,                              -- JSON: HLS ladder / image variants
+    rendition_status TEXT NOT NULL DEFAULT 'none',-- none|queued|processing|ready|failed
+    rendition_error TEXT,
     created_by TEXT,
     created_at TEXT NOT NULL
   );
@@ -256,6 +261,17 @@ export function migrate() {
   CREATE INDEX IF NOT EXISTS idx_play_org ON play_events(org_id);
   CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_logs(org_id);
   `);
+  ensureColumns();
+}
+
+// Additive columns for databases created before object storage existed.
+export function ensureColumns() {
+  const cols = db.prepare('PRAGMA table_info(media)').all().map((c) => c.name);
+  const add = (name, ddl) => { if (!cols.includes(name)) db.exec(`ALTER TABLE media ADD COLUMN ${ddl}`); };
+  add('storage_key', 'storage_key TEXT');
+  add('renditions', 'renditions TEXT');
+  add('rendition_status', "rendition_status TEXT NOT NULL DEFAULT 'none'");
+  add('rendition_error', 'rendition_error TEXT');
 }
 
 export const now = () => new Date().toISOString();

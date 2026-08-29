@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const __import_dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+const BUN = process.env.BUN_PATH || 'bun';
 const PORT = 4321;
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB_PATH = path.join(os.tmpdir(), `bc-test-${Date.now()}.db`);
@@ -26,8 +27,8 @@ const call = async (p, { method = 'GET', body, token } = {}) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test.before(async () => {
-  proc = spawn(process.execPath, ['src/server.js'], {
-    env: { ...process.env, PORT: String(PORT), DB_PATH, NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000', DISABLE_RATE_LIMIT: '1' },
+  proc = spawn(BUN, ['src/server.js'], {
+    env: { ...process.env, PORT: String(PORT), DB_PATH, NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000', DISABLE_RATE_LIMIT: '1', API_ONLY: '1', STORAGE_DRIVER: 'local' },
     stdio: 'ignore',
   });
   for (let i = 0; i < 60; i++) {
@@ -394,13 +395,16 @@ test('2FA enrollment gates subsequent logins', async () => {
   assert.equal(ok.status, 200);
 });
 
-test('static clients are served', async () => {
-  const tv = await fetch(`${BASE}/tv`);
-  assert.equal(tv.status, 200);
-  assert.match(await tv.text(), /Brandcast TV/);
-  const dash = await fetch(`${BASE}/`);
-  assert.equal(dash.status, 200);
-  for (const f of ['/dashboard/app.js', '/dashboard/core.js', '/dashboard/views-core.js', '/dashboard/views-content.js', '/dashboard/views-ops.js', '/dashboard/app.css']) {
-    assert.equal((await fetch(BASE + f)).status, 200, `${f} must be served`);
-  }
+test('the API server returns 503 for UI routes when Next is not attached', async () => {
+  // API_ONLY mode runs the data plane alone; the Next handler is attached by
+  // server.js at the repo root. A clear 503 beats a confusing 404.
+  const res = await fetch(`${BASE}/dashboard`);
+  assert.equal(res.status, 503);
+  assert.match(await res.text(), /UI not attached/);
+});
+
+test('storage reports its active driver', async () => {
+  const health = await call('/health');
+  assert.equal(health.status, 200);
+  assert.equal(health.data.storage, 'local', 'tests run on the local driver');
 });

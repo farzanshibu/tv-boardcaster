@@ -76,7 +76,19 @@ export function buildPayload(screen, at = new Date()) {
       const items = JSON.parse(p.items || '[]').map((it) => {
         const m = db.prepare('SELECT * FROM media WHERE id = ?').get(it.media_id);
         if (!m || m.status !== 'approved') return null;
-        return { media_id: m.id, name: m.name, type: m.type, url: m.url, duration: it.duration || m.duration || 10 };
+        // Renditions let the TV pick a bitrate/size for its own screen and link.
+        const renditions = m.renditions ? JSON.parse(m.renditions) : null;
+        return {
+          media_id: m.id,
+          name: m.name,
+          type: m.type,
+          url: m.url,
+          duration: it.duration || m.duration || 10,
+          hls_url: renditions?.hls_url ?? null,
+          poster_url: renditions?.poster_url ?? null,
+          mp4: renditions?.mp4 ?? null,
+          images: renditions?.variants ?? null,
+        };
       }).filter(Boolean);
       playlist = { id: p.id, name: p.name, items };
     }

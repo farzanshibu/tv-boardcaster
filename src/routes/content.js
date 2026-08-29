@@ -4,6 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { db, uid, now, ROOT } from '../lib/db.js';
 import { requireAuth, requirePerm, audit } from '../lib/auth.js';
+import { keys, putFile, publicUrl, storageReady, removePrefix } from '../lib/storage.js';
+import { enqueueTranscode } from '../lib/transcode.js';
 
 export const router = express.Router();
 
@@ -28,6 +30,13 @@ const upload = multer({
 
 const contentStatus = (org) => (org.approval_required ? 'pending' : 'approved');
 
+/** Media row plus parsed tags and renditions, which is what clients consume. */
+export const expandMedia = (m) => ({
+  ...m,
+  tags: JSON.parse(m.tags || '[]'),
+  renditions: m.renditions ? JSON.parse(m.renditions) : null,
+});
+
 /* ---------------- media ---------------- */
 router.get('/media', requireAuth, (req, res) => {
   const { q, tag, folder, type } = req.query;
@@ -36,26 +45,42 @@ router.get('/media', requireAuth, (req, res) => {
   if (tag) rows = rows.filter((m) => JSON.parse(m.tags).includes(tag));
   if (folder) rows = rows.filter((m) => m.folder === folder);
   if (type) rows = rows.filter((m) => m.type === type);
-  res.json(rows.map((m) => ({ ...m, tags: JSON.parse(m.tags) })));
+  res.json(rows.map(expandMedia));
 });
 
-router.post('/media', requireAuth, requirePerm('content:write'), upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'file required' });
-  const type = TYPES[req.file.mimetype];
-  const id = uid('med');
-  const url = `/uploads/${req.file.filename}`;
-  const { name, tags = '[]', folder = '/', duration } = req.body || {};
-  db.prepare(
-    `INSERT INTO media (id,org_id,name,type,url,bytes,duration,tags,folder,status,created_by,created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).run(id, req.orgId, name || req.file.originalname, type, url, req.file.size,
-        Number(duration) || (type === 'video' ? 30 : 10),
-        typeof tags === 'string' ? tags : JSON.stringify(tags), folder,
-        contentStatus(req.org), req.user.id, now());
-  db.prepare('INSERT INTO media_versions (id,media_id,version,url,bytes,created_at) VALUES (?,?,?,?,?,?)')
-    .run(uid('mv'), id, 1, url, req.file.size, now());
-  audit(req, 'media.upload', id, { name: name || req.file.originalname });
-  res.status(201).json(db.prepare('SELECT * FROM media WHERE id=?').get(id));
+router.post('/media', requireAuth, requirePerm('content:write'), upload.single('file'), async (req, res, nextFn) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file required' });
+    const type = TYPES[req.file.mimetype];
+    const id = uid('med');
+    const ext = path.extname(req.file.originalname) || path.extname(req.file.filename) || '';
+    const displayName = req.body?.name || req.file.originalname;
+    const { tags = '[]', folder = '/', duration } = req.body || {};
+
+    // Original goes to object storage; the CDN/MinIO URL is what screens fetch.
+    const key = keys.original(req.orgId, id, ext);
+    const url = await putFile(key, req.file.path, req.file.mimetype);
+
+    const needsTranscode = type === 'video' || type === 'image';
+    db.prepare(
+      `INSERT INTO media (id,org_id,name,type,url,bytes,duration,tags,folder,status,storage_key,rendition_status,created_by,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(id, req.orgId, displayName, type, url, req.file.size,
+          Number(duration) || (type === 'video' ? 30 : 10),
+          typeof tags === 'string' ? tags : JSON.stringify(tags), folder,
+          contentStatus(req.org), key, needsTranscode ? 'queued' : 'none', req.user.id, now());
+    db.prepare('INSERT INTO media_versions (id,media_id,version,url,bytes,created_at) VALUES (?,?,?,?,?,?)')
+      .run(uid('mv'), id, 1, url, req.file.size, now());
+
+    if (needsTranscode) {
+      enqueueTranscode({
+        type, orgId: req.orgId, mediaId: id, name: displayName,
+        sourcePath: req.file.path, cleanup: storageReady(),
+      });
+    }
+    audit(req, 'media.upload', id, { name: displayName, storage: storageReady() ? 'minio' : 'local' });
+    res.status(201).json(db.prepare('SELECT * FROM media WHERE id=?').get(id));
+  } catch (err) { nextFn(err); }
 });
 
 /** Register externally hosted media (CDN URL) without uploading bytes. */
@@ -128,6 +153,7 @@ router.delete('/media/:id', requireAuth, requirePerm('content:write'), (req, res
     .filter((p) => JSON.parse(p.items).some((i) => i.media_id === m.id));
   if (used.length) return res.status(409).json({ error: 'media_in_use', playlists: used.map((p) => p.name) });
   db.prepare('DELETE FROM media WHERE id=?').run(m.id);
+  void removePrefix(`org/${req.orgId}/media/${m.id}`);
   audit(req, 'media.delete', m.id);
   res.json({ ok: true });
 });

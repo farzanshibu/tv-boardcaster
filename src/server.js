@@ -6,6 +6,7 @@ import { db, migrate, uid, now, ROOT } from './lib/db.js';
 import { verify } from './lib/auth.js';
 import * as hub from './lib/hub.js';
 import { startJobs, healthTick } from './lib/jobs.js';
+import { getStream, statObject, initStorage, driver } from './lib/storage.js';
 import { buildPayload } from './lib/content.js';
 
 import { router as accounts } from './routes/accounts.js';
@@ -25,7 +26,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'brandcast-tv', time: now() }));
+app.get('/api/health', (_req, res) =>
+  res.json({ ok: true, service: 'brandcast-tv', storage: driver(), time: now() }));
 
 app.use('/api', accounts);
 app.use('/api', content);
@@ -35,9 +37,40 @@ app.use('/api', insights);
 app.use('/api', superadmin);
 
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || path.join(ROOT, 'uploads'), { maxAge: '7d', immutable: true }));
-app.use(express.static(path.join(ROOT, 'public')));
-app.get('/tv', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'tv', 'index.html')));
-app.get(/^\/(?!api|uploads).*/, (_req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
+
+// Object-storage origin. In production a CDN fronts MinIO and screens never hit this;
+// locally it lets a TV stream HLS without exposing MinIO's port.
+const MEDIA_TYPES = {
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.ts': 'video/mp2t', '.m4s': 'video/iso.segment', '.mp4': 'video/mp4',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp',
+};
+app.get(/^\/media\/(.+)/, async (req, res) => {
+  const key = req.params[0];
+  try {
+    const ext = path.extname(key).toLowerCase();
+    const stat = await statObject(key).catch(() => null);
+    res.setHeader('Content-Type', MEDIA_TYPES[ext] || 'application/octet-stream');
+    // Playlists must revalidate; immutable segments can be cached hard.
+    res.setHeader('Cache-Control', ext === '.m3u8' ? 'public, max-age=10' : 'public, max-age=31536000, immutable');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (stat?.size) res.setHeader('Content-Length', String(stat.size));
+    const stream = await getStream(key);
+    stream.on('error', () => res.status(404).end());
+    stream.pipe(res);
+  } catch {
+    res.status(404).json({ error: 'not_found' });
+  }
+});
+
+// Everything that is not /api or /uploads is owned by Next.js. attachNext() installs
+// the handler; until then those paths 503 rather than silently 404.
+let nextHandler = null;
+export function attachNext(handler) { nextHandler = handler; }
+app.use((req, res, nextFn) => {
+  if (!nextHandler) return res.status(503).send('UI not attached');
+  nextHandler(req, res).catch(nextFn);
+});
 
 app.use((err, _req, res, _next) => {
   if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'file_too_large' });
@@ -116,11 +149,18 @@ function attachDevice(ws, screenId) {
   });
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  const PORT = Number(process.env.PORT || 4000);
+export async function startBackgroundWork() {
+  const storage = await initStorage();
+  console.log(`[storage] driver=${storage.driver}${storage.bucket ? ` bucket=${storage.bucket}` : ''}`);
   startJobs();
   healthTick();
-  server.listen(PORT, () => {
-    console.log(`Brandcast TV running: http://localhost:${PORT}  (dashboard)  http://localhost:${PORT}/tv  (TV client)`);
-  });
+  return storage;
+}
+
+// The Next.js entry point (server.js at the repo root) owns listen(). Running this
+// file directly still works for the API-only test suites.
+if (process.env.API_ONLY === '1') {
+  const PORT = Number(process.env.PORT || 4000);
+  await startBackgroundWork();
+  server.listen(PORT, () => console.log(`Brandcast API on :${PORT}`));
 }
