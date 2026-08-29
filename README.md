@@ -104,12 +104,19 @@ tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
 ## Verification
 
 ```bash
-npm test    # 39 tests: 24 API/realtime + 15 UI
+npm test    # 60 tests: 24 API/realtime + 21 feature depth + 15 UI
 ```
 
 The suite runs against a real server and a real DOM. It covers the PRD acceptance
 criteria directly, including measured publish latency, offline detection and recovery,
 tenant isolation, RBAC denials, plan-limit enforcement and the superadmin console.
+
+`tests/features.test.js` covers the paths that are easy to claim and hard to verify:
+real multipart uploads with the bytes served back, version replace/restore, the
+approval workflow filtering unapproved content out of the TV payload, branch-manager
+scoping (including that bulk publish cannot leak across branches), branch defaults,
+ticker time-boxing, password reset single-use semantics, SSO plan gating and the
+billing downgrade/cancel lifecycle.
 
 Measured against the PRD KPIs on a local run:
 
