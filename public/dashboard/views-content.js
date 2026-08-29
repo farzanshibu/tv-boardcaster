@@ -1,4 +1,5 @@
 import { h, api, toast, modal, field, ago, can, describe } from './core.js';
+import { t as tr } from './i18n.js';
 
 /* ==================== MEDIA LIBRARY ==================== */
 export async function MediaView(rerender) {
@@ -62,7 +63,7 @@ export async function MediaView(rerender) {
             await api(`/media/${m.id}/replace`, { method: 'POST', form: fd });
             toast('Replaced', 'ok'); rerender();
           } }, 'Upload replacement')),
-        h('h3', { class: 'mt' }, 'Version history'),
+        h('h3', { class: 'mt' }, tr('media.versions')),
         h('table', {}, h('tbody', {}, versions.map((v) => h('tr', {},
           h('td', {}, `v${v.version}`), h('td', { class: 'small muted' }, ago(v.created_at)),
           h('td', {}, can('content:write') && v.version !== m.version
@@ -78,8 +79,8 @@ export async function MediaView(rerender) {
     h('div', { class: 'between mb' },
       h('div', { class: 'muted small' }, `${media.length} assets`),
       can('content:write') && h('div', { class: 'row' },
-        h('button', { onclick: linkDialog }, 'Link CDN URL'),
-        h('button', { class: 'btn-primary', onclick: uploadDialog }, '+ Upload media'))),
+        h('button', { onclick: linkDialog }, tr('media.link')),
+        h('button', { class: 'btn-primary', onclick: uploadDialog }, tr('media.upload')))),
     media.length ? h('div', { class: 'media-grid' }, media.map((m) =>
       h('div', { class: 'media-card', onclick: () => detail(m) },
         h('div', { class: 'thumb' }, m.type === 'video'
@@ -89,7 +90,7 @@ export async function MediaView(rerender) {
           h('div', { class: 'small', style: 'font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, m.name),
           h('div', { class: 'tiny muted' }, `${m.type} · ${m.duration}s`),
           m.status !== 'approved' && h('span', { class: 'badge warn tiny' }, 'pending')))))
-      : h('div', { class: 'empty' }, 'No media yet. Upload an image or video to get started.'));
+      : h('div', { class: 'empty' }, tr('media.empty')));
 }
 
 /* ==================== PLAYLISTS ==================== */
@@ -170,7 +171,7 @@ export async function PlaylistsView(rerender) {
   return h('div', {},
     h('div', { class: 'between mb' },
       h('div', { class: 'muted small' }, `${playlists.length} playlists`),
-      can('content:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, '+ New playlist')),
+      can('content:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, tr('playlists.new'))),
     playlists.length ? h('div', { class: 'grid g2' }, playlists.map((p) =>
       h('div', { class: 'card' },
         h('div', { class: 'between' }, h('strong', {}, p.name),
@@ -180,13 +181,13 @@ export async function PlaylistsView(rerender) {
           i.media.type === 'video' ? h('video', { src: i.media.url, style: 'width:52px;height:34px;object-fit:cover;border-radius:4px' })
             : h('img', { src: i.media.url, style: 'width:52px;height:34px;object-fit:cover;border-radius:4px' }))),
         h('div', { class: 'row mt' },
-          h('button', { class: 'btn-sm', onclick: () => preview(p) }, 'Preview'),
+          h('button', { class: 'btn-sm', onclick: () => preview(p) }, tr('common.preview')),
           can('content:write') && h('button', { class: 'btn-sm', onclick: () => editor(p) }, 'Edit'),
           p.status !== 'approved' && can('content:approve') && h('button', { class: 'btn-sm', onclick: async () => { await api(`/playlists/${p.id}/approve`, { method: 'POST' }); toast('Approved', 'ok'); rerender(); } }, 'Approve'),
           can('content:write') && h('button', { class: 'btn-sm btn-danger', onclick: async () => {
             try { await api(`/playlists/${p.id}`, { method: 'DELETE' }); toast('Deleted'); rerender(); }
             catch (e) { toast(describe(e), 'bad'); } } }, 'Delete')))))
-      : h('div', { class: 'empty' }, 'No playlists yet. Create one to assign to your screens.'));
+      : h('div', { class: 'empty' }, tr('playlists.empty')));
 }
 
 /* ==================== TICKERS ==================== */
@@ -222,7 +223,7 @@ export async function TickersView(rerender) {
   return h('div', {},
     h('div', { class: 'between mb' },
       h('div', { class: 'muted small' }, `${tickers.length} tickers`),
-      can('content:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, '+ New flash news')),
+      can('content:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, tr('tickers.new'))),
     tickers.length ? h('div', { class: 'grid g2' }, tickers.map((t) =>
       h('div', { class: 'card' },
         h('div', { class: 'between' }, h('strong', {}, t.name), h('span', { class: 'badge' }, t.position)),
@@ -231,7 +232,7 @@ export async function TickersView(rerender) {
         h('div', { class: 'row mt' },
           can('content:write') && h('button', { class: 'btn-sm', onclick: () => editor(t) }, 'Edit'),
           can('content:write') && h('button', { class: 'btn-sm btn-danger', onclick: async () => { await api(`/tickers/${t.id}`, { method: 'DELETE' }); toast('Deleted'); rerender(); } }, 'Delete')))))
-      : h('div', { class: 'empty' }, 'No flash news yet.'));
+      : h('div', { class: 'empty' }, tr('tickers.empty')));
 }
 
 /* ==================== BRANCHES ==================== */
@@ -266,7 +267,7 @@ export async function BranchesView(rerender) {
   return h('div', {},
     h('div', { class: 'between mb' },
       h('div', { class: 'muted small' }, `${branches.length} branches`),
-      can('branch:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, '+ New branch')),
+      can('branch:write') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, tr('branches.new'))),
     h('div', { class: 'card' }, h('table', {},
       h('thead', {}, h('tr', {}, ['Branch', 'Timezone', 'Screens', 'Local time', 'Status', ''].map((x) => h('th', {}, x)))),
       h('tbody', {}, branches.map((b) => h('tr', {},

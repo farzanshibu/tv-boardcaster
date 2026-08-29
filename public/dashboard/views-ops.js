@@ -1,4 +1,5 @@
 import { h, api, state, toast, modal, field, ago, fmtDate, can, describe, money, setToken } from './core.js';
+import { t as tr } from './i18n.js';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -99,8 +100,7 @@ export async function SchedulesView(rerender) {
     h('thead', {}, h('tr', {}, ['Schedule', 'Applies to', 'Window', 'Days', 'Priority', ''].map((x) => h('th', {}, x)))),
     h('tbody', {}, rows)));
 
-  const empty = h('div', { class: 'empty' },
-    'No schedules. Create dayparts like "Breakfast 7-11am" that switch playlists automatically.');
+  const empty = h('div', { class: 'empty' }, tr('schedules.empty'));
 
   const toolbar = h('div', { class: 'between mb' },
     h('div', { class: 'muted small' }, `${schedules.length} schedules`),
@@ -110,7 +110,7 @@ export async function SchedulesView(rerender) {
             h('option', { value: '' }, 'Preview a screen...'),
             screens.map((s) => h('option', { value: s.id }, s.name)))
         : null,
-      can('content:publish') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, '+ New schedule')));
+      can('content:publish') && h('button', { class: 'btn-primary', onclick: () => editor(null) }, tr('schedules.new'))));
 
   return h('div', {}, toolbar, schedules.length ? table : empty);
 }
@@ -130,7 +130,7 @@ export async function AnalyticsView() {
 
   return h('div', {},
     h('div', { class: 'grid g4 mb' },
-      h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Fleet uptime (30d)'),
+      h('div', { class: 'stat' }, h('div', { class: 'k' }, tr('analytics.fleet_uptime')),
         h('div', { class: 'v', style: `color:${uptime.fleet_uptime_pct >= 99.5 ? 'var(--ok)' : 'var(--warn)'}` }, `${uptime.fleet_uptime_pct}%`),
         h('div', { class: 'd' }, 'Target 99.5%')),
       h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Screens'), h('div', { class: 'v' }, String(overview.total_screens)), h('div', { class: 'd' }, `${overview.online_screens} online`)),
@@ -138,7 +138,7 @@ export async function AnalyticsView() {
       h('div', { class: 'stat' }, h('div', { class: 'k' }, 'Play time'), h('div', { class: 'v' }, `${Math.round(content.by_media.reduce((a, m) => a + (m.seconds || 0), 0) / 3600)}h`), h('div', { class: 'd' }, 'Cumulative'))),
 
     h('div', { class: 'card mb' },
-      h('div', { class: 'between mb' }, h('h3', {}, 'Screen uptime'), h('button', { class: 'btn-sm', onclick: csv }, 'Export CSV')),
+      h('div', { class: 'between mb' }, h('h3', {}, tr('analytics.screen_uptime')), h('button', { class: 'btn-sm', onclick: csv }, tr('common.export'))),
       uptime.screens.length ? h('table', {},
         h('thead', {}, h('tr', {}, ['Screen', 'Branch', 'Uptime', 'Online hours', 'Status'].map((x) => h('th', {}, x)))),
         h('tbody', {}, uptime.screens.map((s) => h('tr', {},
@@ -149,12 +149,12 @@ export async function AnalyticsView() {
         : h('div', { class: 'empty' }, 'No screens to report on.')),
 
     h('div', { class: 'grid g2' },
-      h('div', { class: 'card' }, h('h3', {}, 'Top media by plays'),
+      h('div', { class: 'card' }, h('h3', {}, tr('analytics.top_media')),
         content.by_media.length ? h('table', {}, h('tbody', {}, content.by_media.slice(0, 10).map((m) => h('tr', {},
           h('td', {}, m.media?.name || m.media_id), h('td', { class: 'muted small' }, m.media?.type || ''),
           h('td', {}, `${m.plays} plays`), h('td', { class: 'muted small' }, `${Math.round((m.seconds || 0) / 60)} min`)))))
           : h('div', { class: 'empty small' }, 'No play data yet. Pair a screen and let it run.')),
-      h('div', { class: 'card' }, h('h3', {}, 'Playlist performance'),
+      h('div', { class: 'card' }, h('h3', {}, tr('analytics.playlist_perf')),
         content.by_playlist.length ? h('table', {}, h('tbody', {}, content.by_playlist.slice(0, 10).map((p) => h('tr', {},
           h('td', {}, p.playlist?.name || '—'), h('td', {}, `${p.plays} plays`),
           h('td', { class: 'muted small' }, `${Math.round((p.seconds || 0) / 60)} min`)))))
@@ -241,12 +241,12 @@ export async function TeamView(rerender) {
     }, 'Copy link'))));
 
   const invitesCard = h('div', { class: 'card' },
-    h('h3', {}, 'Pending invites'),
+    h('h3', {}, tr('team.pending')),
     h('table', {}, h('tbody', {}, inviteRows)));
 
   const toolbar = h('div', { class: 'between mb' },
     h('div', { class: 'muted small' }, `${users.length} members`),
-    can('user:write') && h('button', { class: 'btn-primary', onclick: invite }, '+ Invite member'));
+    can('user:write') && h('button', { class: 'btn-primary', onclick: invite }, tr('team.invite')));
 
   return h('div', {}, toolbar, membersCard, invites.length ? invitesCard : null);
 }
@@ -291,15 +291,15 @@ export async function BillingView(rerender) {
 
   const statsRow = h('div', { class: 'grid g3 mb' },
     h('div', { class: 'stat' },
-      h('div', { class: 'k' }, 'Current plan'),
+      h('div', { class: 'k' }, tr('billing.current_plan')),
       h('div', { class: 'v' }, b.plan.name),
       h('div', { class: 'd' }, b.subscription?.status || '-')),
     h('div', { class: 'stat' },
-      h('div', { class: 'k' }, 'Active screens'),
+      h('div', { class: 'k' }, tr('billing.active_screens')),
       h('div', { class: 'v' }, `${b.usage.screens}/${b.plan.max_screens}`),
       h('div', { class: 'bar' }, h('i', { style: `width:${Math.min(100, b.usage.screens / b.plan.max_screens * 100)}%` }))),
     h('div', { class: 'stat' },
-      h('div', { class: 'k' }, 'Next invoice (est.)'),
+      h('div', { class: 'k' }, tr('billing.next_invoice')),
       h('div', { class: 'v' }, money(b.estimated_next_invoice.subtotal + b.estimated_next_invoice.tax, currency)),
       h('div', { class: 'd' }, b.estimated_next_invoice.tax ? 'incl. GST 18%' : 'no tax')));
 
@@ -309,7 +309,7 @@ export async function BillingView(rerender) {
     : null;
 
   const invoicesCard = h('div', { class: 'card' },
-    h('h3', {}, 'Invoices'),
+    h('h3', {}, tr('billing.invoices')),
     b.invoices.length
       ? h('table', {},
           h('thead', {}, h('tr', {}, ['Invoice', 'Plan', 'Screens', 'Subtotal', 'Tax', 'Total', 'Date', ''].map((x) => h('th', {}, x)))),
@@ -376,7 +376,7 @@ export async function SettingsView(rerender) {
   };
 
   return h('div', { class: 'grid g2' },
-    h('div', { class: 'card' }, h('h3', {}, 'Organization'),
+    h('div', { class: 'card' }, h('h3', {}, tr('settings.org')),
       field('Name', nameInput), field('GSTIN (India)', gstin),
       h('label', { class: 'row mt' }, req2fa, 'Require 2FA for all members'),
       h('label', { class: 'row' }, approval, 'Require admin approval before content publishes'),
@@ -386,7 +386,7 @@ export async function SettingsView(rerender) {
         toast('Settings saved', 'ok'); location.reload();
       } }, 'Save settings')),
 
-    h('div', { class: 'card' }, h('h3', {}, 'Your account'),
+    h('div', { class: 'card' }, h('h3', {}, tr('settings.account')),
       h('div', { class: 'small' }, me.user.name), h('div', { class: 'tiny muted mb' }, me.user.email),
       h('div', { class: 'row mb' }, h('span', { class: 'badge info' }, me.user.role),
         h('span', { class: `badge ${me.user.two_factor ? 'ok' : ''}` }, me.user.two_factor ? '2FA on' : '2FA off')),
@@ -403,7 +403,7 @@ export async function SettingsView(rerender) {
 /* ==================== AUDIT LOG ==================== */
 export async function AuditView() {
   const logs = await api('/audit-logs');
-  return h('div', { class: 'card' }, h('h3', {}, 'Audit log'),
+  return h('div', { class: 'card' }, h('h3', {}, tr('audit.title')),
     logs.length ? h('table', {},
       h('thead', {}, h('tr', {}, ['Action', 'Actor', 'Target', 'When', ''].map((x) => h('th', {}, x)))),
       h('tbody', {}, logs.map((l) => h('tr', {},
@@ -458,7 +458,7 @@ export async function SuperadminView(rerender) {
     h('td', {}, h('span', { class: `badge ${t.status === 'active' ? 'ok' : 'bad'}` }, t.status)),
     h('td', {}, h('div', { class: 'row' },
       h('button', { class: 'btn-sm', onclick: () => flagsDialog(t) }, 'Flags'),
-      h('button', { class: 'btn-sm', onclick: () => impersonate(t) }, 'Support login'),
+      h('button', { class: 'btn-sm', onclick: () => impersonate(t) }, tr('admin.support_login')),
       h('button', {
         class: 'btn-sm btn-danger',
         onclick: async () => {
@@ -475,7 +475,7 @@ export async function SuperadminView(rerender) {
 
   const tenantsCard = h('div', { class: 'card mb' },
     h('div', { class: 'between mb' },
-      h('h3', {}, 'Tenants'),
+      h('h3', {}, tr('admin.tenants')),
       h('button', {
         class: 'btn-sm',
         onclick: async () => {
@@ -488,7 +488,7 @@ export async function SuperadminView(rerender) {
       h('tbody', {}, tenants.map(tenantRow))));
 
   const healthCard = h('div', { class: 'card' },
-    h('h3', {}, 'Platform health'),
+    h('h3', {}, tr('admin.health')),
     h('div', { class: 'row' },
       h('span', { class: 'badge ok' }, `uptime ${Math.round(health.uptime_seconds / 60)}m`),
       h('span', { class: 'badge' }, `memory ${health.memory_mb} MB`),

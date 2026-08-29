@@ -1,4 +1,5 @@
 import { h, api, state, setToken, toast, modal, field, fmtDate, ago, can, describe, money } from './core.js';
+import { t as tr } from './i18n.js';
 
 /* ==================== AUTH ==================== */
 export function LoginView(navigate) {
@@ -67,10 +68,10 @@ export async function DashboardView() {
       h('a', { href: '#/billing' }, 'Upgrade your plan →')),
 
     h('div', { class: 'grid g4' },
-      stat('Total screens', o.total_screens, `${o.branches} branches`),
-      stat('Online now', o.online_screens, `${o.offline_screens} offline`, o.offline_screens ? 'warn' : 'ok'),
-      stat('Playlists', o.playlists, `${o.media} media assets`),
-      stat('Publishes (24h)', o.publishes_24h, `Plan: ${plan.name}`)),
+      stat(tr('stat.total_screens'), o.total_screens, `${o.branches} branches`),
+      stat(tr('stat.online_now'), o.online_screens, `${o.offline_screens} offline`, o.offline_screens ? 'warn' : 'ok'),
+      stat(tr('stat.playlists'), o.playlists, `${o.media} media assets`),
+      stat(tr('stat.publishes'), o.publishes_24h, `Plan: ${plan.name}`)),
 
     h('div', { class: 'grid g2 mt' },
       h('div', { class: 'card' },
@@ -178,9 +179,9 @@ export async function ScreensView(rerender) {
         s.effective.conflicts?.length ? h('div', { class: 'err' },
           `Schedule conflict: ${s.effective.conflicts.map((c) => c.name).join(', ')} — most specific target wins.`) : null,
         h('div', { class: 'row mb' },
-          can('content:publish') && h('button', { class: 'btn-sm', onclick: async () => { const r = await api(`/screens/${id}/publish`, { method: 'POST' }); toast(r.delivered ? 'Pushed live' : 'Queued (screen offline)', r.delivered ? 'ok' : ''); } }, 'Publish now'),
-          can('content:publish') && h('button', { class: 'btn-sm', onclick: async () => { try { await api(`/screens/${id}/rollback`, { method: 'POST' }); toast('Rolled back', 'ok'); rerender(); } catch (e) { toast(describe(e), 'bad'); } } }, 'Rollback'),
-          can('screen:write') && h('button', { class: 'btn-sm', onclick: async () => { await api(`/screens/${id}/unpair`, { method: 'POST' }); toast('Unpaired'); rerender(); } }, 'Unpair'),
+          can('content:publish') && h('button', { class: 'btn-sm', onclick: async () => { const r = await api(`/screens/${id}/publish`, { method: 'POST' }); toast(r.delivered ? 'Pushed live' : 'Queued (screen offline)', r.delivered ? 'ok' : ''); } }, tr('screens.publish_now')),
+          can('content:publish') && h('button', { class: 'btn-sm', onclick: async () => { try { await api(`/screens/${id}/rollback`, { method: 'POST' }); toast('Rolled back', 'ok'); rerender(); } catch (e) { toast(describe(e), 'bad'); } } }, tr('screens.rollback')),
+          can('screen:write') && h('button', { class: 'btn-sm', onclick: async () => { await api(`/screens/${id}/unpair`, { method: 'POST' }); toast('Unpaired'); rerender(); } }, tr('screens.unpair')),
           can('screen:write') && h('button', { class: 'btn-sm btn-danger', onclick: async () => { if (confirm(`Delete ${s.name}?`)) { await api(`/screens/${id}`, { method: 'DELETE' }); toast('Deleted'); rerender(); } } }, 'Delete')),
         h('h3', { class: 'mt' }, 'Recent sync events'),
         h('table', {}, h('tbody', {}, [...ev.publishes.slice(0, 6).map((p) =>
@@ -198,8 +199,8 @@ export async function ScreensView(rerender) {
         h('span', { class: 'badge ok' }, `${screens.filter((s) => s.status === 'online').length} online`),
         h('span', { class: 'badge bad' }, `${screens.filter((s) => s.status !== 'online').length} offline`)),
       h('div', { class: 'row' },
-        can('content:publish') && screens.length ? h('button', { onclick: bulk }, 'Bulk publish') : null,
-        can('screen:write') && h('button', { class: 'btn-primary', onclick: openPair }, '+ Add New Screen'))),
+        can('content:publish') && screens.length ? h('button', { onclick: bulk }, tr('screens.bulk')) : null,
+        can('screen:write') && h('button', { class: 'btn-primary', onclick: openPair }, tr('screens.add')))),
 
     screens.length ? h('div', { class: 'grid g3' }, screens.map((s) =>
       h('div', { class: 'screen-card', onclick: () => detail(s.id) },
@@ -207,11 +208,11 @@ export async function ScreensView(rerender) {
           h('div', { class: 'row' }, h('span', { class: `dot ${s.status === 'online' ? 'ok' : 'bad'}` }), h('strong', {}, s.name)),
           h('span', { class: 'tiny muted' }, s.orientation)),
         h('div', { class: 'tiny muted mt' }, s.branch_name || 'No branch'),
-        h('div', { class: 'small mt' }, s.playlist_name || h('span', { class: 'muted' }, 'No playlist assigned')),
+        h('div', { class: 'small mt' }, s.playlist_name || h('span', { class: 'muted' }, tr('screens.no_playlist'))),
         s.ticker_name && h('div', { class: 'tiny muted' }, `Ticker: ${s.ticker_name}`),
         h('div', { class: 'tiny muted mt' }, `Last sync ${ago(s.last_sync_at)}`))))
       : h('div', { class: 'empty' },
-          h('div', {}, 'No screens yet.'),
+          h('div', {}, tr('screens.empty')),
           h('div', { class: 'small mt' }, 'Open the TV player, then click "Add New Screen" and enter the 4-digit code.'),
           h('a', { href: '/tv', target: '_blank', class: 'small' }, 'Open TV player →')));
 }

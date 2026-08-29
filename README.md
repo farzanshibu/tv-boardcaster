@@ -117,7 +117,7 @@ tests/       e2e.test.js (API + realtime) · ui.test.js (real DOM)
 ## Verification
 
 ```bash
-npm test    # 73 tests: 24 API/realtime + 21 feature depth + 13 non-functional + 15 UI
+npm test    # 75 tests: 24 API/realtime + 21 feature depth + 13 non-functional + 17 UI
 ```
 
 The suite runs against a real server and a real DOM. It covers the PRD acceptance
@@ -170,7 +170,10 @@ Measured against the PRD KPIs on a local run:
   labelled form controls, visible focus rings, and `prefers-reduced-motion` support.
   Body text sits at 16:1 contrast and muted text at 9.7:1 (AA needs 4.5:1).
 - **Localization** in English, Hindi, Tamil, Kannada and Arabic, with automatic RTL.
-  Add a language by adding one block to `public/dashboard/i18n.js`.
+  73 strings cover the navigation chrome and the primary view actions, headings and
+  empty states. Deeper strings (modal field labels, table headers, validation copy)
+  still fall back to English. Add a language by adding one block to
+  `public/dashboard/i18n.js`; a test fails if a locale omits any English key.
 
 ## Production notes
 

@@ -254,6 +254,48 @@ test('TV player page contains pairing UI and offline caching logic', async () =>
   assert.match(html, /setTimeout\(connect, 4000\)/, 'auto-reconnects');
 });
 
+test('views render in the selected language, not just the nav chrome', async () => {
+  const ctx = await boot();
+  const i18n = await import(pathToFileURL(path.join(ROOT, 'public/dashboard/i18n.js')).href);
+
+  // English baseline
+  i18n.setLocale('en');
+  const enScreens = (await ctx.views.ScreensView(() => {})).textContent;
+  const enMedia = (await ctx.views.MediaView(() => {})).textContent;
+  const enBilling = (await ctx.views.BillingView(() => {})).textContent;
+  assert.match(enScreens, /Add New Screen/);
+  assert.match(enMedia, /Upload media/);
+  assert.match(enBilling, /Current plan/);
+
+  // Hindi: view bodies must translate, not only the sidebar
+  i18n.setLocale('hi');
+  const hiScreens = (await ctx.views.ScreensView(() => {})).textContent;
+  const hiMedia = (await ctx.views.MediaView(() => {})).textContent;
+  const hiBilling = (await ctx.views.BillingView(() => {})).textContent;
+  assert.match(hiScreens, /नई स्क्रीन जोड़ें/, 'Screens action button is translated');
+  assert.doesNotMatch(hiScreens, /Add New Screen/, 'English string is gone');
+  assert.match(hiMedia, /मीडिया अपलोड करें/, 'Media action button is translated');
+  assert.match(hiBilling, /वर्तमान योजना/, 'Billing labels are translated');
+
+  // Tamil and Arabic reach the view layer too
+  i18n.setLocale('ta');
+  assert.match((await ctx.views.ScreensView(() => {})).textContent, /புதிய திரை சேர்/);
+  i18n.setLocale('ar');
+  assert.match((await ctx.views.ScreensView(() => {})).textContent, /إضافة شاشة جديدة/);
+
+  i18n.setLocale('en');
+  ctx.restore();
+});
+
+test('every view module imports i18n and uses it', async () => {
+  for (const f of ['views-core.js', 'views-content.js', 'views-ops.js', 'app.js']) {
+    const src = fs.readFileSync(path.join(ROOT, 'public/dashboard', f), 'utf8');
+    assert.match(src, /from '\.\/i18n\.js'/, `${f} imports i18n`);
+    const calls = (src.match(/[^a-zA-Z]tr\('/g) || []).length;
+    assert.ok(calls >= 5, `${f} actually uses the translator (found ${calls})`);
+  }
+});
+
 test('all client modules parse as valid JavaScript', async () => {
   const { execFileSync } = await import('node:child_process');
   const dir = path.join(ROOT, 'public/dashboard');

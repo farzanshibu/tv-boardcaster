@@ -1,5 +1,5 @@
 import { h, api, state, toast, logout, can, describe } from './core.js';
-import { t, locale, setLocale, LOCALES, applyDocumentLocale } from './i18n.js';
+import { t as tr, locale, setLocale, LOCALES, applyDocumentLocale } from './i18n.js';
 import { LoginView, DashboardView, ScreensView } from './views-core.js';
 import { MediaView, PlaylistsView, TickersView, BranchesView } from './views-content.js';
 import { SchedulesView, AnalyticsView, TeamView, BillingView, SettingsView, AuditView, SuperadminView, AcceptInviteView } from './views-ops.js';
@@ -49,7 +49,7 @@ async function render() {
   if (route.perm && !can(route.perm)) return (location.hash = '/dashboard');
 
   const body = h('div', { class: 'content', role: 'region', 'aria-live': 'polite', 'aria-busy': 'true', tabindex: '-1' },
-    h('div', { class: 'muted' }, t('common.loading')));
+    h('div', { class: 'muted' }, tr('common.loading')));
 
   const nav = NAV.map((group) => [
     h('div', { class: 'nav-sep' }, t(group.sep)),
@@ -64,20 +64,20 @@ async function render() {
   ]);
 
   root().innerHTML = '';
-  root().appendChild(h('a', { href: '#main-content', class: 'skip-link' }, t('action.skip')));
+  root().appendChild(h('a', { href: '#main-content', class: 'skip-link' }, tr('action.skip')));
   root().appendChild(h('div', { class: 'app' },
     h('nav', { class: 'sidebar', 'aria-label': 'Main navigation' },
       h('div', { class: 'brand' }, 'Brandcast TV'),
       nav,
-      isSuper ? [h('div', { class: 'nav-sep' }, t('nav.platform')),
+      isSuper ? [h('div', { class: 'nav-sep' }, tr('nav.platform')),
         h('button', {
           class: `nav-item ${p === '/admin' ? 'active' : ''}`,
           onclick: () => (location.hash = '/admin'),
           'aria-current': p === '/admin' ? 'page' : null,
-        }, h('span', { 'aria-hidden': 'true' }, '★'), t('nav.admin'))] : null,
+        }, h('span', { 'aria-hidden': 'true' }, '★'), tr('nav.admin'))] : null,
       h('div', { class: 'spacer' }),
-      h('a', { class: 'nav-item', href: '/tv', target: '_blank' }, h('span', { 'aria-hidden': 'true' }, '⧉'), t('action.opentv')),
-      h('button', { class: 'nav-item', onclick: logout }, h('span', { 'aria-hidden': 'true' }, '⏻'), t('action.signout'))),
+      h('a', { class: 'nav-item', href: '/tv', target: '_blank' }, h('span', { 'aria-hidden': 'true' }, '⧉'), tr('action.opentv')),
+      h('button', { class: 'nav-item', onclick: logout }, h('span', { 'aria-hidden': 'true' }, '⏻'), tr('action.signout'))),
 
     h('main', { class: 'main', id: 'main-content' },
       h('header', { class: 'topbar' },
@@ -85,7 +85,7 @@ async function render() {
           state.me.org && h('div', { class: 'tiny muted' }, `${state.me.org.name} · ${state.me.plan.name}`)),
         h('div', { class: 'right' },
           h('select', {
-            'aria-label': t('common.language'), class: 'lang-select',
+            'aria-label': tr('common.language'), class: 'lang-select',
             onchange: (e) => { setLocale(e.target.value); render(); },
           }, Object.entries(LOCALES).map(([code, label]) =>
             h('option', { value: code, selected: code === locale ? 'true' : null }, label))),
