@@ -4,17 +4,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { startServer } from './helpers/postgres.js';
 
-const BUN = process.env.BUN_PATH || 'bun';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4324;
 const BASE = `http://127.0.0.1:${PORT}`;
-const DB_PATH = path.join(os.tmpdir(), `bc-nfr-${Date.now()}.db`);
 const realFetch = globalThis.fetch.bind(globalThis);
-let proc;
+let server;
 
 const call = async (p, { method = 'GET', body, token } = {}) => {
   const headers = {};
@@ -25,21 +22,16 @@ const call = async (p, { method = 'GET', body, token } = {}) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-test.before(async () => {
-  // rate limiting is ON here (other suites disable it)
-  proc = spawn(BUN, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, RATE_LIMIT_AUTH: '5', RATE_LIMIT_SIGNUP: '3', API_ONLY: '1', STORAGE_DRIVER: 'local' }, stdio: 'ignore',
-  });
-  for (let i = 0; i < 60; i++) {
-    try { if ((await realFetch(`${BASE}/api/health`)).ok) return; } catch {}
-    await sleep(200);
-  }
-  throw new Error('server did not start');
+// Booted at module load: node:test caps a before hook at 5s, and starting a real
+// server against a fresh database is legitimately slower than that.
+server = await startServer({
+  label: 'nfr',
+  port: PORT,
+  env: { RATE_LIMIT_AUTH: '5', RATE_LIMIT_SIGNUP: '3' },
 });
 
-test.after(() => {
-  proc?.kill();
-  for (const s of ['', '-wal', '-shm']) fs.rmSync(DB_PATH + s, { force: true });
+test.after(async () => {
+  await server?.stop();
 });
 
 const ctx = {};
@@ -187,7 +179,7 @@ test('every dashboard view is localized, not just the shell', () => {
     // The TV player and the root redirect render no dashboard chrome.
     if (p.includes('/tv/') || p.endsWith(path.join('app', 'page.tsx'))) return false;
     return !src.includes('t("');
-  });
+});
   assert.deepEqual(untranslated.map((p) => path.relative(WEB, p)), [], 'these views use no translations');
 });
 
@@ -250,7 +242,7 @@ const sourceFiles = (dir) =>
     const full = path.join(dir, e.name);
     if (e.isDirectory()) return sourceFiles(full);
     return /\.tsx?$/.test(e.name) ? [full] : [];
-  });
+});
 
 test('no emoji or unicode glyphs are used as icons', () => {
   // Emoji, dingbats, geometric shapes, arrows and box-drawing characters. These

@@ -4,21 +4,25 @@
 //        lets the player drop to a lower rung instead of buffering, and responsive
 //        images stop a 4MB PNG being fetched for a 720p panel.
 // HOW:   ffmpeg builds an HLS ladder capped at the source height (never upscale) plus
-//        progressive MP4 fallbacks for TVs without HLS. Everything lands in MinIO.
-// WHERE: storage keys in src/lib/storage.js; playback logic in web/src/app/tv
+//        progressive MP4 fallbacks for TVs without HLS. Everything lands in storage.
+// WHERE: storage keys in src/lib/storage.ts; playback in web/src/app/tv. Scheduling,
+//        retries and the worker pool are in src/lib/queue.ts — this file only knows
+//        how to turn one file into renditions.
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { db, now, uid } from './db.js';
 import { keys, putDirectory, putFile, publicUrl } from './storage.js';
+import { now } from './ids.js';
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
 const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe';
 
-/** Bitrate ladder. Each rung is only produced if the source is at least that tall. */
-export const VIDEO_LADDER = [
+export type Rung = { height: number; bitrate: number; audio: number };
+
+/** Bitrate ladder. A rung is only produced if the source is at least that tall. */
+export const VIDEO_LADDER: readonly Rung[] = [
   { height: 360, bitrate: 800, audio: 96 },
   { height: 480, bitrate: 1400, audio: 128 },
   { height: 720, bitrate: 3000, audio: 128 },
@@ -26,31 +30,31 @@ export const VIDEO_LADDER = [
 ];
 
 /** Image widths for responsive delivery. */
-export const IMAGE_WIDTHS = [640, 1280, 1920, 3840];
+export const IMAGE_WIDTHS = [640, 1280, 1920, 3840] as const;
 
-const run = (bin, args) =>
+const run = (bin: string, args: string[]): Promise<string> =>
   new Promise((resolve, reject) => {
     const p = spawn(bin, args);
     let stderr = '';
-    p.stderr.on('data', (d) => { stderr += String(d); });
+    p.stderr.on('data', (d: Buffer) => { stderr += String(d); });
     p.on('error', reject);
     p.on('close', (code) =>
       code === 0 ? resolve(stderr) : reject(new Error(`${bin} exited ${code}: ${stderr.slice(-400)}`)));
   });
 
-export async function ffmpegAvailable() {
+export async function ffmpegAvailable(): Promise<boolean> {
   try { await run(FFMPEG, ['-version']); return true; } catch { return false; }
 }
 
 /** Not every ffmpeg build ships libwebp; fall back to JPEG when it is missing. */
-let encoderCache = null;
-export async function availableEncoders() {
+let encoderCache: { webp: boolean } | null = null;
+export async function availableEncoders(): Promise<{ webp: boolean }> {
   if (encoderCache) return encoderCache;
   try {
-    const out = await new Promise((resolve, reject) => {
+    const out = await new Promise<string>((resolve, reject) => {
       const p = spawn(FFMPEG, ['-hide_banner', '-encoders']);
       let buf = '';
-      p.stdout.on('data', (d) => { buf += String(d); });
+      p.stdout.on('data', (d: Buffer) => { buf += String(d); });
       p.on('error', reject);
       p.on('close', () => resolve(buf));
     });
@@ -61,47 +65,80 @@ export async function availableEncoders() {
   return encoderCache;
 }
 
+export type ProbeResult = {
+  width: number;
+  height: number;
+  duration: number;
+  bitrate: number;
+  codec: string | null;
+  hasAudio: boolean;
+};
+
+type FfprobeStream = { codec_type?: string; codec_name?: string; width?: number; height?: number };
+type FfprobeOutput = { streams?: FfprobeStream[]; format?: { duration?: string; bit_rate?: string } };
+
 /** Probe width/height/duration/bitrate of a source file. */
-export async function probe(filePath) {
-  const out = await new Promise((resolve, reject) => {
+export async function probe(filePath: string): Promise<ProbeResult> {
+  const out = await new Promise<string>((resolve, reject) => {
     const p = spawn(FFPROBE, [
       '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', filePath,
     ]);
     let json = '';
-    p.stdout.on('data', (d) => { json += String(d); });
+    p.stdout.on('data', (d: Buffer) => { json += String(d); });
     p.on('error', reject);
     p.on('close', (code) => (code === 0 ? resolve(json) : reject(new Error('ffprobe failed'))));
   });
-  const meta = JSON.parse(out);
-  const video = (meta.streams || []).find((s) => s.codec_type === 'video');
+  const meta = JSON.parse(out) as FfprobeOutput;
+  const video = (meta.streams ?? []).find((s) => s.codec_type === 'video');
   return {
     width: video?.width ?? 0,
     height: video?.height ?? 0,
     duration: Math.round(Number(meta.format?.duration ?? 0)),
     bitrate: Number(meta.format?.bit_rate ?? 0),
     codec: video?.codec_name ?? null,
-    hasAudio: (meta.streams || []).some((st) => st.codec_type === 'audio'),
+    hasAudio: (meta.streams ?? []).some((s) => s.codec_type === 'audio'),
   };
 }
 
-async function probeHasAudio(filePath) {
-  try {
-    const meta = await probe(filePath);
-    return meta.hasAudio;
-  } catch { return false; }
+async function probeHasAudio(filePath: string): Promise<boolean> {
+  try { return (await probe(filePath)).hasAudio; } catch { return false; }
 }
 
 /** Rungs that make sense for this source: never upscale, always keep one. */
-export function ladderFor(sourceHeight) {
+export function ladderFor(sourceHeight: number): Rung[] {
   const usable = VIDEO_LADDER.filter((r) => r.height <= (sourceHeight || 1080));
-  return usable.length ? usable : [VIDEO_LADDER[0]];
+  return usable.length ? [...usable] : [VIDEO_LADDER[0]!];
 }
+
+export type Mp4Variant = { height: number; bitrate_kbps: number; url: string };
+export type ImageVariant = { width: number; format: string; url: string; bytes: number };
+
+export type VideoRenditions = {
+  kind: 'video';
+  source: ProbeResult;
+  hls_url: string;
+  poster_url: string;
+  mp4: Mp4Variant[];
+  ladder: { height: number; bitrate_kbps: number }[];
+  created_at: string;
+};
+
+export type ImageRenditions = {
+  kind: 'image';
+  source: Pick<ProbeResult, 'width' | 'height'> & Partial<ProbeResult>;
+  variants: ImageVariant[];
+  created_at: string;
+};
+
+export type Renditions = VideoRenditions | ImageRenditions;
+
+export type TranscodeArgs = { orgId: string; mediaId: string; sourcePath: string };
 
 /**
  * Build an HLS ladder + MP4 fallbacks and upload them.
  * Returns the rendition manifest stored on the media row.
  */
-export async function transcodeVideo({ orgId, mediaId, sourcePath }) {
+export async function transcodeVideo({ orgId, mediaId, sourcePath }: TranscodeArgs): Promise<VideoRenditions> {
   const info = await probe(sourcePath);
   const rungs = ladderFor(info.height);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), `bc-hls-${mediaId}-`));
@@ -114,8 +151,8 @@ export async function transcodeVideo({ orgId, mediaId, sourcePath }) {
     const filters = rungs.map((rung, i) => `[0:v]scale=-2:${rung.height},format=yuv420p[v${i}]`);
     args.push('-filter_complex', filters.join(';'));
 
-    const varStream = [];
-    rungs.forEach((rung, i) => {
+    const varStream: string[] = [];
+    rungs.forEach((_rung, i) => {
       args.push('-map', `[v${i}]`);
       if (hasAudio) args.push('-map', '0:a:0');
       varStream.push(hasAudio ? `v:${i},a:${i}` : `v:${i}`);
@@ -148,8 +185,7 @@ export async function transcodeVideo({ orgId, mediaId, sourcePath }) {
     for (let i = 0; i < rungs.length; i++) fs.mkdirSync(path.join(work, `v${i}`), { recursive: true });
     await run(FFMPEG, args);
 
-    const hlsPrefix = keys.hlsRoot(orgId, mediaId);
-    await putDirectory(hlsPrefix, work);
+    await putDirectory(keys.hlsRoot(orgId, mediaId), work);
 
     // Poster frame for the dashboard grid and for pre-roll on the TV.
     const posterPath = path.join(work, 'poster.jpg');
@@ -157,7 +193,7 @@ export async function transcodeVideo({ orgId, mediaId, sourcePath }) {
     const posterUrl = await putFile(keys.posterFrame(orgId, mediaId), posterPath, 'image/jpeg');
 
     // Progressive MP4 per rung: Tizen/webOS builds without HLS still get a match.
-    const mp4 = [];
+    const mp4: Mp4Variant[] = [];
     for (const rung of rungs) {
       const out = path.join(work, `${rung.height}p.mp4`);
       await run(FFMPEG, [
@@ -185,18 +221,18 @@ export async function transcodeVideo({ orgId, mediaId, sourcePath }) {
   }
 }
 
-/** Downscaled WebP + JPEG variants so a 720p panel never pulls a 4K asset. */
-export async function transcodeImage({ orgId, mediaId, sourcePath }) {
+/** Downscaled WebP + JPEG variants, so a 720p panel never pulls a 4K asset. */
+export async function transcodeImage({ orgId, mediaId, sourcePath }: TranscodeArgs): Promise<ImageRenditions> {
   const info = await probe(sourcePath).catch(() => ({ width: 0, height: 0 }));
   const work = fs.mkdtempSync(path.join(os.tmpdir(), `bc-img-${mediaId}-`));
   try {
-    const widths = IMAGE_WIDTHS.filter((w) => w <= (info.width || 1920));
+    const widths: number[] = IMAGE_WIDTHS.filter((w) => w <= (info.width || 1920));
     if (!widths.length) widths.push(Math.min(info.width || 640, 640));
 
     const { webp } = await availableEncoders();
     const formats = webp ? ['webp', 'jpg'] : ['jpg'];
 
-    const variants = [];
+    const variants: ImageVariant[] = [];
     for (const width of widths) {
       for (const format of formats) {
         const out = path.join(work, `${width}.${format}`);
@@ -217,40 +253,3 @@ export async function transcodeImage({ orgId, mediaId, sourcePath }) {
     fs.rmSync(work, { recursive: true, force: true });
   }
 }
-
-/* ---------------- job queue ---------------- */
-
-const queue = [];
-let working = false;
-
-/** Queue a transcode. Uploads return immediately; renditions land asynchronously. */
-export function enqueueTranscode(job) {
-  queue.push(job);
-  void drain();
-  return queue.length;
-}
-
-async function drain() {
-  if (working) return;
-  working = true;
-  while (queue.length) {
-    const job = queue.shift();
-    try {
-      db.prepare("UPDATE media SET rendition_status='processing' WHERE id=?").run(job.mediaId);
-      const result = job.type === 'video' ? await transcodeVideo(job) : await transcodeImage(job);
-      db.prepare("UPDATE media SET renditions=?, rendition_status='ready' WHERE id=?")
-        .run(JSON.stringify(result), job.mediaId);
-      db.prepare('INSERT INTO notifications (id,org_id,kind,message,read,created_at) VALUES (?,?,?,?,0,?)')
-        .run(uid('ntf'), job.orgId, 'media_ready', `"${job.name}" is ready for streaming`, now());
-    } catch (err) {
-      console.error('[transcode]', err.message);
-      db.prepare("UPDATE media SET rendition_status='failed', rendition_error=? WHERE id=?")
-        .run(String(err.message).slice(0, 500), job.mediaId);
-    } finally {
-      if (job.cleanup) fs.rmSync(job.sourcePath, { force: true });
-    }
-  }
-  working = false;
-}
-
-export const queueDepth = () => queue.length;

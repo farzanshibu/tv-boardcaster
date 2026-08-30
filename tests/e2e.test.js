@@ -1,20 +1,18 @@
 /* End-to-end verification of the PRD flows against a live server. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { spawn } from 'node:child_process';
 import WebSocket from 'ws';
 import { fileURLToPath } from 'node:url';
+import { startServer } from './helpers/postgres.js';
 
-const __import_dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const BUN = process.env.BUN_PATH || 'bun';
 const PORT = 4321;
 const BASE = `http://127.0.0.1:${PORT}`;
-const DB_PATH = path.join(os.tmpdir(), `bc-test-${Date.now()}.db`);
-let proc;
+let server;
 
 const call = async (p, { method = 'GET', body, token } = {}) => {
   const res = await fetch(`${BASE}/api${p}`, {
@@ -26,21 +24,16 @@ const call = async (p, { method = 'GET', body, token } = {}) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-test.before(async () => {
-  proc = spawn(BUN, ['src/server.js'], {
-    env: { ...process.env, PORT: String(PORT), DB_PATH, NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000', DISABLE_RATE_LIMIT: '1', API_ONLY: '1', STORAGE_DRIVER: 'local' },
-    stdio: 'ignore',
-  });
-  for (let i = 0; i < 60; i++) {
-    try { const r = await fetch(`${BASE}/api/health`); if (r.ok) return; } catch {}
-    await sleep(200);
-  }
-  throw new Error('server did not start');
+// Booted at module load: node:test caps a before hook at 5s, and starting a real
+// server against a fresh database is legitimately slower than that.
+server = await startServer({
+  label: 'e2e',
+  port: PORT,
+  env: { NODE_ENV: 'e2e', OFFLINE_AFTER_MS: '2000', HEALTH_MS: '1000', DISABLE_RATE_LIMIT: '1' },
 });
 
-test.after(() => {
-  proc?.kill();
-  for (const s of ['', '-wal', '-shm']) fs.rmSync(DB_PATH + s, { force: true });
+test.after(async () => {
+  await server?.stop();
 });
 
 const ctx = {};
@@ -137,7 +130,7 @@ test('device session: connects, receives content, acks, reports plays', async ()
   await new Promise((resolve, reject) => {
     ws.on('message', (raw) => { messages.push(JSON.parse(raw)); if (messages.length === 1) resolve(); });
     ws.on('error', reject);
-  });
+});
   const first = messages[0];
   assert.equal(first.type, 'content');
   assert.equal(first.payload.playlist.items.length, 2);
@@ -300,7 +293,7 @@ test('unpair revokes the device token and forces re-pairing', async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${PORT}/device/session?token=${token}`);
     ws.on('error', () => resolve('rejected'));
     ws.on('open', () => { ws.close(); resolve('accepted'); });
-  });
+});
   assert.equal(wsRes, 'rejected');
 });
 
@@ -319,7 +312,7 @@ test('offline recovery: TV reconnects and pulls missed updates', async () => {
   const msg = await new Promise((resolve, reject) => {
     ws.on('message', (raw) => resolve(JSON.parse(raw)));
     ws.on('error', reject);
-  });
+});
   assert.equal(msg.type, 'content');
   assert.equal(msg.payload.playlist.id, ctx.playlist, 'missed update delivered on reconnect');
   await sleep(200);
@@ -347,13 +340,18 @@ test('audit log records admin and publish actions', async () => {
 
 test('superadmin console: tenants, flags, impersonation, health', async () => {
   // provision a platform superadmin directly in the test database
-  const mk = spawn(process.execPath, ['--input-type=module', '-e', `
-    const { db, migrate, uid, now } = await import(${JSON.stringify('file://' + __import_dir + '/src/lib/db.js')});
-    const { hash } = await import(${JSON.stringify('file://' + __import_dir + '/src/lib/auth.js')});
-    migrate();
-    db.prepare('INSERT INTO users (id,org_id,name,email,password_hash,role,created_at) VALUES (?,?,?,?,?,?,?)')
-      .run(uid('usr'), null, 'Ops', 'root@brandcast.tv', hash('superadmin123'), 'superadmin', now());
-  `], { env: { ...process.env, DB_PATH }, stdio: 'ignore' });
+  const mk = spawn(BUN, ['--input-type=module', '-e', `
+    const { db, runMigrations, closeDb } = await import(${JSON.stringify('file://' + ROOT + '/src/db/client.ts')});
+    const { users } = await import(${JSON.stringify('file://' + ROOT + '/src/db/schema.ts')});
+    const { hash } = await import(${JSON.stringify('file://' + ROOT + '/src/lib/auth.ts')});
+    const { uid, now } = await import(${JSON.stringify('file://' + ROOT + '/src/lib/ids.ts')});
+    await runMigrations();
+    await db.insert(users).values({
+      id: uid('usr'), org_id: null, name: 'Ops', email: 'root@brandcast.tv',
+      password_hash: hash('superadmin123'), role: 'superadmin', created_at: now(),
+    });
+    await closeDb();
+  `], { env: { ...process.env, DATABASE_URL: server.database.url }, stdio: 'ignore' });
   await new Promise((r) => mk.on('exit', r));
 
   const login = await call('/auth/login', { method: 'POST', body: { email: 'root@brandcast.tv', password: 'superadmin123' } });
@@ -390,14 +388,14 @@ test('2FA enrollment gates subsequent logins', async () => {
   const noCode = await call('/auth/login', { method: 'POST', body: { email: ctx.email, password: 'password123' } });
   assert.equal(noCode.data.error, 'totp_required');
 
-  const { totpCode } = await import('../src/lib/auth.js');
+  const { totpCode } = await import('../src/lib/totp.ts');
   const ok = await call('/auth/login', { method: 'POST', body: { email: ctx.email, password: 'password123', totp: totpCode(setup.data.secret) } });
   assert.equal(ok.status, 200);
 });
 
 test('the API server returns 503 for UI routes when Next is not attached', async () => {
   // API_ONLY mode runs the data plane alone; the Next handler is attached by
-  // server.js at the repo root. A clear 503 beats a confusing 404.
+  // server.ts at the repo root. A clear 503 beats a confusing 404.
   const res = await fetch(`${BASE}/dashboard`);
   assert.equal(res.status, 503);
   assert.match(await res.text(), /UI not attached/);

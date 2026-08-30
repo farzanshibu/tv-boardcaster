@@ -1,33 +1,46 @@
 {
   "name": "brandcast-tv",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Multi-tenant cloud digital signage platform",
+  "main": "server.ts",
   "directories": {
     "test": "tests"
   },
   "scripts": {
-    "start": "NODE_ENV=production bun server.js",
-    "dev": "bun server.js",
+    "start": "NODE_ENV=production bun server.ts",
+    "dev": "bun server.ts",
     "build": "cd web && bun run build",
-    "seed": "bun scripts/seed.js",
-    "typecheck": "cd web && bun run typecheck",
+    "seed": "bun scripts/seed.ts",
+    "worker": "bun scripts/transcode-worker.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun scripts/migrate.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && cd web && bun run typecheck",
     "lint": "cd web && bun run lint",
-    "test": "bun test tests/"
+    "test": "bun test --timeout 30000 tests/"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@hono/node-server": "^2.1.1",
     "bcryptjs": "^3.0.3",
-    "express": "^5.2.1",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.5",
     "jsonwebtoken": "^9.0.3",
     "minio": "^8.0.7",
-    "multer": "^2.3.0",
+    "mqtt": "^5.15.2",
+    "pg": "^8.23.0",
+    "redis": "^6.2.1",
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
+    "drizzle-kit": "^0.31.10",
     "jsdom": "^30.0.1"
   },
   "workspaces": [

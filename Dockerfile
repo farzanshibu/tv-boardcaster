@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# All-Bun image. There is no Node stage and no native addon build: the database
-# uses bun:sqlite, so the runtime needs nothing compiled.
+# All-Bun image. There is no Node stage and no compiler step: Bun runs the
+# TypeScript data plane directly, and every dependency is pure JavaScript, so no
+# native addon has to be built for the runtime architecture.
 
 # ---------- deps: full workspace install for the build ----------
 FROM oven/bun:1.4-alpine AS deps
@@ -12,7 +13,7 @@ COPY web/package.json ./web/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
-# ---------- api-deps: production-only tree for the Express/WS data plane ----------
+# ---------- api-deps: production-only tree for the API/WS data plane ----------
 # Next's standalone output traces its own dependencies, so the runtime image needs
 # only the server's runtime packages. Dropping `workspaces` excludes Next entirely.
 FROM oven/bun:1.4-alpine AS api-deps
@@ -29,7 +30,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY web ./web
 COPY src ./src
-COPY server.js ./
+COPY server.ts tsconfig.json ./
 RUN cd web && bun run build
 
 # The standalone server embeds its resolved config as a literal. Extract it so the
@@ -49,9 +50,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=4000 \
-    DB_PATH=/data/brandcast.db \
     UPLOAD_DIR=/data/uploads \
     NEXT_TELEMETRY_DISABLED=1
+
+# DATABASE_URL has no default on purpose: the service must be pointed at a Postgres
+# it is meant to use, not silently start against the wrong one.
 
 # ffmpeg powers the HLS ladder and image variants; curl backs the healthcheck.
 RUN apk add --no-cache ffmpeg curl
@@ -64,9 +67,11 @@ COPY --from=api-deps /app/node_modules          ./node_modules
 COPY --from=build    /app/web/.next/static      ./web/.next/static
 COPY --from=build    /app/web/public            ./web/public
 
-COPY package.json server.js ./
+COPY package.json tsconfig.json server.ts ./
 COPY src ./src
 COPY scripts ./scripts
+# The generated migrations are applied at boot, so they ship with the image.
+COPY drizzle ./drizzle
 
 RUN mkdir -p /data/uploads && chown -R bun:bun /data
 USER bun
@@ -77,4 +82,4 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
-CMD ["bun", "server.js"]
+CMD ["bun", "server.ts"]

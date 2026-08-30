@@ -3,18 +3,11 @@
    defaults, SSO, password reset, billing cancel and the device HTTP endpoints. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { startServer } from './helpers/postgres.js';
 
-const BUN = process.env.BUN_PATH || 'bun';
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4323;
 const BASE = `http://127.0.0.1:${PORT}`;
-const DB_PATH = path.join(os.tmpdir(), `bc-feat-${Date.now()}.db`);
-let proc;
+let server;
 
 const call = async (p, { method = 'GET', body, token, form } = {}) => {
   const headers = {};
@@ -36,20 +29,16 @@ const upload = (bytes, filename, type, extra = {}) => {
   return fd;
 };
 
-test.before(async () => {
-  proc = spawn(BUN, ['src/server.js'], {
-    cwd: ROOT, env: { ...process.env, PORT: String(PORT), DB_PATH, DISABLE_RATE_LIMIT: '1', API_ONLY: '1', STORAGE_DRIVER: 'local' }, stdio: 'ignore',
-  });
-  for (let i = 0; i < 60; i++) {
-    try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {}
-    await sleep(200);
-  }
-  throw new Error('server did not start');
+// Booted at module load: node:test caps a before hook at 5s, and starting a real
+// server against a fresh database is legitimately slower than that.
+server = await startServer({
+  label: 'feat',
+  port: PORT,
+  env: { DISABLE_RATE_LIMIT: '1' },
 });
 
-test.after(() => {
-  proc?.kill();
-  for (const s of ['', '-wal', '-shm']) fs.rmSync(DB_PATH + s, { force: true });
+test.after(async () => {
+  await server?.stop();
 });
 
 const ctx = {};

@@ -1,4 +1,43 @@
+# Host ports are deliberately offset from the defaults (5433, 6380, 9010) so the
+# stack does not fight whatever else a developer already has on 5432/6379/9000.
+# Inside the network the services still talk on their standard ports.
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: brandcast-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-brandcast}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brandcast}
+      POSTGRES_DB: ${POSTGRES_DB:-brandcast}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - brandcast-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brandcast} -d ${POSTGRES_DB:-brandcast}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      # First boot runs initdb, which on a slow volume takes minutes. Failures inside
+      # start_period do not count, so this is grace rather than a longer wait.
+      start_period: 180s
+
+  # Fan-out for the delivery plane. One node can hold a few thousand sockets; past
+  # that the publish has to reach whichever node holds the screen.
+  redis:
+    image: redis:7-alpine
+    container_name: brandcast-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
   minio:
     image: quay.io/minio/minio:latest
     container_name: brandcast-minio
@@ -8,8 +47,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-brandcast}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-brandcast-secret}
     ports:
-      - "${MINIO_PORT:-9000}:9000"   # S3 API — the CDN origin
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"  # web console
+      - "${MINIO_PORT:-9010}:9000"   # S3 API — the CDN origin
+      - "${MINIO_CONSOLE_PORT:-9011}:9001"  # web console
     volumes:
       - brandcast-objects:/data
     healthcheck:
@@ -25,15 +64,22 @@ services:
     container_name: brandcast-tv
     restart: unless-stopped
     depends_on:
+      postgres:
+        condition: service_healthy
       minio:
         condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "${PORT:-4000}:4000"
     environment:
       NODE_ENV: production
       PORT: 4000
-      DB_PATH: /data/brandcast.db
       UPLOAD_DIR: /data/uploads
+
+      # Inside the compose network the services are reachable by name.
+      DATABASE_URL: postgres://${POSTGRES_USER:-brandcast}:${POSTGRES_PASSWORD:-brandcast}@postgres:5432/${POSTGRES_DB:-brandcast}
+      REDIS_URL: redis://redis:6379
 
       # CHANGE THIS before exposing the service to a network.
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
@@ -45,7 +91,6 @@ services:
       RATE_LIMIT_SIGNUP: ${RATE_LIMIT_SIGNUP:-5}
       ISSUER_GSTIN: ${ISSUER_GSTIN:-29AABCB1234C1ZX}
 
-      # Object storage. Inside the compose network MinIO is reachable by name.
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_USE_SSL: "false"
@@ -53,7 +98,18 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-brandcast-secret}
       MINIO_BUCKET: ${MINIO_BUCKET:-brandcast-media}
       # Point this at your CDN in production so screens never hit the origin.
+      # With the `edge` profile running, http://localhost:${EDGE_PORT:-9020} is one.
       CDN_BASE_URL: ${CDN_BASE_URL:-}
+
+      # Payments. Without keys the service stays on the `manual` gateway.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:4000}
+
+      TRANSCODE_CONCURRENCY: ${TRANSCODE_CONCURRENCY:-2}
     volumes:
       - brandcast-data:/data
     healthcheck:
@@ -63,17 +119,62 @@ services:
       retries: 3
       start_period: 25s
 
+  # Dedicated transcode workers:  docker compose --profile workers up -d --scale worker=3
+  # Set TRANSCODE_CONCURRENCY=0 on `brandcast` to hand the queue over entirely.
+  worker:
+    build: .
+    image: brandcast-tv:2.0.0
+    profiles: ["workers"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-brandcast}:${POSTGRES_PASSWORD:-brandcast}@postgres:5432/${POSTGRES_DB:-brandcast}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-brandcast}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-brandcast-secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-brandcast-media}
+      CDN_BASE_URL: ${CDN_BASE_URL:-}
+      TRANSCODE_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    command: ["bun", "scripts/transcode-worker.ts"]
+
+  # A caching edge in front of MinIO:  docker compose --profile edge up -d
+  # Then set CDN_BASE_URL=http://localhost:9020 and screens stop hitting the origin.
+  edge:
+    image: nginx:1.27-alpine
+    container_name: brandcast-edge
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      minio:
+        condition: service_healthy
+    ports:
+      - "${EDGE_PORT:-9020}:80"
+    volumes:
+      - ./deploy/edge.conf:/etc/nginx/conf.d/default.conf:ro
+      - brandcast-edge-cache:/var/cache/nginx
+
   # One-shot demo data loader:  docker compose --profile seed run --rm seed
   seed:
     build: .
     image: brandcast-tv:2.0.0
     profiles: ["seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      DB_PATH: /data/brandcast.db
-    volumes:
-      - brandcast-data:/data
-    command: ["node", "scripts/seed.js"]
+      DATABASE_URL: postgres://${POSTGRES_USER:-brandcast}:${POSTGRES_PASSWORD:-brandcast}@postgres:5432/${POSTGRES_DB:-brandcast}
+    command: ["bun", "scripts/seed.ts"]
 
 volumes:
   brandcast-data:
   brandcast-objects:
+  brandcast-pgdata:
+  brandcast-edge-cache:
