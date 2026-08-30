@@ -8,15 +8,21 @@
 // WHERE: resolution logic in src/lib/content.js
 
 import { useState } from "react";
-import { Button, Chip } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { api } from "@/lib/api";
 import { useQuery } from "@/lib/use-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { permission } from "@/lib/resources";
-import { DataTable, EmptyState, ErrorBlock, LoadingBlock, PageHeader, SectionCard, Td } from "@/components/global/ui";
+import { Icon } from "@/components/global/icon";
+import {
+  DataTable, EmptyState, ErrorBlock, LoadingBlock, PageHeader, SectionCard,
+  StatusPill, Td, Tr,
+} from "@/components/global/ui";
 import { FormDialog } from "@/components/global/form-dialog";
-import { SelectField, TextInput, FieldRow } from "@/components/global/form";
+import {
+  CheckboxField, SegmentedControl, SelectField, TextInput, FieldRow,
+} from "@/components/global/form";
 import type { Schedule } from "@/lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -33,16 +39,16 @@ export default function SchedulesPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [name, setName] = useState("");
-  const [contentType, setContentType] = useState("playlist");
+  const [contentType, setContentType] = useState<"playlist" | "ticker">("playlist");
   const [contentId, setContentId] = useState("");
-  const [targetType, setTargetType] = useState("org");
+  const [targetType, setTargetType] = useState<"org" | "branch" | "screen">("org");
   const [targetId, setTargetId] = useState("");
   const [startTime, setStartTime] = useState("07:00");
   const [endTime, setEndTime] = useState("11:00");
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [priority, setPriority] = useState("0");
 
-  if (schedules.loading && !schedules.data) return <LoadingBlock label={t("common.loading")} />;
+  if (schedules.loading && !schedules.data) return <LoadingBlock rows={5} />;
   if (schedules.error) return <ErrorBlock message={schedules.error} onRetry={schedules.reload} />;
   const list = schedules.data ?? [];
 
@@ -57,9 +63,11 @@ export default function SchedulesPage() {
   const openEditor = (s: Schedule | null) => {
     setEditing(s);
     setName(s?.name ?? "");
-    setContentType(s?.content_type ?? "playlist");
+    setContentType(s?.content_type === "ticker" ? "ticker" : "playlist");
     setContentId(s?.content_id ?? "");
-    setTargetType(s?.target_type ?? "org");
+    setTargetType(
+      s?.target_type === "branch" ? "branch" : s?.target_type === "screen" ? "screen" : "org",
+    );
     setTargetId(s?.target_id ?? "");
     setStartTime(s?.start_time ?? "07:00");
     setEndTime(s?.end_time ?? "11:00");
@@ -74,51 +82,82 @@ export default function SchedulesPage() {
         title={t("nav.schedules")}
         subtitle={`${list.length} schedules`}
         actions={can(permission("schedules", "create")) ? (
-          <Button variant="primary" onPress={() => openEditor(null)}>{t("schedules.new")}</Button>
+          <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+            <Icon name="add" size={13} />
+            {t("schedules.new")}
+          </Button>
         ) : null}
       />
 
-      {list.length === 0 ? (
-        <EmptyState title={t("schedules.empty")} hint='Create dayparts like "Breakfast 7-11am" that switch playlists automatically.' />
-      ) : (
-        <SectionCard>
+      <SectionCard flush>
+        {list.length === 0 ? (
+          <EmptyState
+            icon="schedules"
+            title={t("schedules.empty")}
+            hint='Create dayparts like "Breakfast 7 to 11am" that switch playlists automatically.'
+            action={can(permission("schedules", "create")) ? (
+              <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+                <Icon name="add" size={13} />
+                {t("schedules.new")}
+              </Button>
+            ) : null}
+          />
+        ) : (
           <DataTable head={["Schedule", "Applies to", "Window", "Days", "Priority", ""]}>
             {list.map((s) => (
-              <tr key={s.id}>
+              <Tr key={s.id}>
                 <Td>
-                  <p className="font-medium">{s.name}</p>
-                  <p className="text-xs text-muted">{s.content_type}</p>
+                  <p className="font-medium text-foreground">{s.name}</p>
+                  <p className="flex items-center gap-1 text-footnote text-muted">
+                    <Icon name={s.content_type === "ticker" ? "tickers" : "playlists"} size={11} />
+                    {s.content_type}
+                  </p>
                 </Td>
-                <Td><Chip variant="soft">{s.target_type}</Chip></Td>
+                <Td>
+                  <StatusPill
+                    tone="neutral"
+                    icon={s.target_type === "screen" ? "screens" : s.target_type === "branch" ? "branches" : "platform"}
+                  >
+                    {s.target_type}
+                  </StatusPill>
+                </Td>
                 <Td className="tabular-nums">
-                  {s.start_time} – {s.end_time}
-                  {s.start_date ? <p className="text-xs text-muted">{s.start_date} → {s.end_date ?? "open"}</p> : null}
+                  {s.start_time} to {s.end_time}
+                  {s.start_date ? (
+                    <p className="text-footnote text-muted">
+                      {s.start_date} until {s.end_date ?? "open"}
+                    </p>
+                  ) : null}
                 </Td>
-                <Td className="text-xs text-muted">
+                <Td className="text-footnote text-muted">
                   {s.days_of_week.length === 7 ? "Every day" : s.days_of_week.map((d) => DAYS[d]).join(", ")}
                 </Td>
-                <Td>{s.priority}</Td>
+                <Td className="tabular-nums">{s.priority}</Td>
                 <Td>
                   {can(permission("schedules", "update")) ? (
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onPress={() => openEditor(s)}>{t("common.edit")}</Button>
+                    <div className="flex justify-end gap-1.5">
+                      <Button size="sm" variant="outline" onPress={() => openEditor(s)}>
+                        <Icon name="edit" size={13} />
+                        {t("common.edit")}
+                      </Button>
                       <Button size="sm" variant="danger-soft" onPress={() => void api.deleteSchedule(s.id).then(schedules.reload)}>
-                        {t("common.delete")}
+                        <Icon name="delete" size={13} />
                       </Button>
                     </div>
                   ) : null}
                 </Td>
-              </tr>
+              </Tr>
             ))}
           </DataTable>
-        </SectionCard>
-      )}
+        )}
+      </SectionCard>
 
       <FormDialog
         isOpen={open}
         onClose={() => setOpen(false)}
         title={editing ? "Edit schedule" : "New schedule"}
         description="Times use each branch's local timezone. The most specific target wins conflicts."
+        icon="schedules"
         size="lg"
         confirmLabel="Save schedule"
         onConfirm={async () => {
@@ -134,54 +173,66 @@ export default function SchedulesPage() {
         }}
       >
         <TextInput label="Schedule name" value={name} onChange={setName} placeholder="Breakfast menu" />
-        <FieldRow>
-          <SelectField
-            label="Content type"
-            options={[{ id: "playlist", label: "Playlist" }, { id: "ticker", label: "Flash news" }]}
-            selected={contentType}
-            onSelect={(v) => { setContentType(v); setContentId(""); }}
-          />
-          <SelectField label="Content" options={contentOptions} selected={contentId} onSelect={setContentId} />
-        </FieldRow>
-        <FieldRow>
-          <SelectField
-            label="Applies to"
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-body font-medium text-foreground">Content type</span>
+          <SegmentedControl
+            ariaLabel="Content type"
+            value={contentType}
+            onChange={(v) => { setContentType(v); setContentId(""); }}
             options={[
-              { id: "org", label: "Whole organization" },
-              { id: "branch", label: "Branch" },
-              { id: "screen", label: "Single screen" },
+              { id: "playlist", label: "Playlist", icon: "playlists" },
+              { id: "ticker", label: "Flash news", icon: "tickers" },
             ]}
-            selected={targetType}
-            onSelect={(v) => { setTargetType(v); setTargetId(""); }}
           />
-          <SelectField
-            label="Target"
-            options={targetOptions}
-            selected={targetId}
-            onSelect={setTargetId}
-            isDisabled={targetType === "org"}
+        </div>
+        <SelectField label="Content" options={contentOptions} selected={contentId} onSelect={setContentId} />
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-body font-medium text-foreground">Applies to</span>
+          <SegmentedControl
+            ariaLabel="Applies to"
+            value={targetType}
+            onChange={(v) => { setTargetType(v); setTargetId(""); }}
+            options={[
+              { id: "org", label: "Organization", icon: "platform" },
+              { id: "branch", label: "Branch", icon: "branches" },
+              { id: "screen", label: "Screen", icon: "screens" },
+            ]}
           />
-        </FieldRow>
+        </div>
+        {targetType !== "org" ? (
+          <SelectField label="Target" options={targetOptions} selected={targetId} onSelect={setTargetId} />
+        ) : null}
+
         <FieldRow>
           <TextInput label="Start time" value={startTime} onChange={setStartTime} type="time" />
           <TextInput label="End time" value={endTime} onChange={setEndTime} type="time" />
         </FieldRow>
+
         <fieldset>
-          <legend className="mb-1 text-sm text-muted">Days of week</legend>
-          <div className="flex flex-wrap gap-3">
+          <legend className="mb-1.5 text-body font-medium text-foreground">Days of week</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
             {DAYS.map((d, i) => (
-              <label key={d} className="flex items-center gap-1.5 text-sm">
-                <input
-                  type="checkbox"
-                  checked={days.includes(i)}
-                  onChange={(e) => setDays((prev) => (e.target.checked ? [...prev, i].sort() : prev.filter((x) => x !== i)))}
-                />
-                {d}
-              </label>
+              <CheckboxField
+                key={d}
+                label={d}
+                checked={days.includes(i)}
+                onChange={(checked) =>
+                  setDays((prev) => (checked ? [...prev, i].sort() : prev.filter((x) => x !== i)))
+                }
+              />
             ))}
           </div>
         </fieldset>
-        <TextInput label="Priority (higher wins ties)" value={priority} onChange={setPriority} type="number" />
+
+        <TextInput
+          label="Priority"
+          value={priority}
+          onChange={setPriority}
+          type="number"
+          description="Higher wins when two schedules target the same specificity."
+        />
       </FormDialog>
     </div>
   );

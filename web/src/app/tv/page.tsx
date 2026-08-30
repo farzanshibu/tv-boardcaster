@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type Hls from "hls.js";
+import { Icon } from "@/components/global/icon";
 import {
   chooseImage, chooseMp4, estimateDownlinkKbps, hasNativeHls,
   startLevelBitrateCap, supportsWebp, type ImageVariant, type Mp4Variant,
@@ -270,22 +271,60 @@ export default function TvPlayer() {
   if (phase === "pairing") {
     const mins = Math.max(0, Math.floor(secondsLeft / 60));
     const secs = Math.max(0, secondsLeft % 60);
+    const expiring = secondsLeft > 0 && secondsLeft <= 30;
     return (
       <main
         role="status"
         aria-live="polite"
-        className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_50%_35%,#1e293b,#020617)] text-center"
+        className="grid min-h-screen place-items-center bg-[#000] text-center"
       >
-        <div>
-          <p className="text-[2.2vw] font-bold uppercase tracking-[0.4em] text-sky-400">Brandcast TV</p>
-          <p className="mx-auto mt-4 max-w-[52vw] text-[1.4vw] leading-relaxed text-slate-400">
-            Enter this code in your Brandcast dashboard to pair this screen.
+        <div className="flex flex-col items-center">
+          <span className="grid size-[5vh] place-items-center rounded-[1.2vh] bg-white/10 text-white">
+            <Icon name="tv" size={26} />
+          </span>
+
+          <p className="mt-[2vh] text-[1.5vh] font-semibold uppercase tracking-[0.32em] text-white/45">
+            Brandcast TV
           </p>
-          <p aria-label="Pairing code" className="my-[3vh] text-[15vw] font-extrabold leading-none tracking-[0.12em] text-white drop-shadow-[0_0_60px_rgba(56,189,248,0.55)]">
-            {code}
+
+          <h1 className="mt-[4vh] text-[3.2vh] font-semibold tracking-[-0.01em] text-white">
+            Pair this screen
+          </h1>
+          <p className="mx-auto mt-[1vh] max-w-[46vw] text-[2vh] leading-relaxed text-white/55">
+            In your Brandcast dashboard, choose Screens, then Add New Screen, and enter
+            this code.
           </p>
-          <p aria-label="Time remaining" className="text-[1.8vw] tabular-nums text-amber-300">
-            {mins}:{String(secs).padStart(2, "0")}
+
+          {/* Four separated digit wells: readable across a room, and the grouping
+              makes it obvious the operator is reading four characters.
+              The wells are aria-hidden and the spaced string is read instead, so a
+              screen reader says "zero four two seven" rather than "four hundred
+              twenty seven". */}
+          <div
+            role="group"
+            aria-label="Pairing code"
+            className="my-[5vh] flex items-center gap-[1.6vh]"
+          >
+            <span className="sr-only">{code.split("").join(" ")}</span>
+            {code.split("").map((digit, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                className="grid h-[19vh] w-[14vh] place-items-center rounded-[2.2vh] border border-white/12 bg-white/6 text-[12vh] font-semibold leading-none tabular-nums tracking-tight text-white"
+              >
+                {digit}
+              </span>
+            ))}
+          </div>
+
+          <p
+            aria-label="Time remaining"
+            className={`flex items-center gap-[1vh] text-[2.2vh] tabular-nums ${
+              expiring ? "text-[#ff9f0a]" : "text-white/45"
+            }`}
+          >
+            <Icon name="time" size={18} />
+            Expires in {mins}:{String(secs).padStart(2, "0")}
           </p>
         </div>
       </main>
@@ -298,8 +337,17 @@ export default function TvPlayer() {
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-black">
       {items.length === 0 ? (
-        <div className="grid h-full place-items-center text-[2vw] text-slate-500">
-          No content assigned to this screen yet.
+        <div className="grid h-full place-items-center">
+          <div className="flex flex-col items-center gap-[1.5vh] text-center">
+            <span className="grid size-[7vh] place-items-center rounded-full bg-white/8 text-white/40">
+              <Icon name="playlists" size={30} />
+            </span>
+            <p className="text-[2.4vh] font-medium text-white/70">No content assigned</p>
+            <p className="max-w-[40vw] text-[1.8vh] text-white/40">
+              Assign a playlist to this screen from the dashboard. It appears here within
+              seconds.
+            </p>
+          </div>
         </div>
       ) : null}
 
@@ -338,15 +386,20 @@ export default function TvPlayer() {
         </div>
       ) : null}
 
-      <div className="absolute end-[1.5vh] top-[1.5vh] flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950/75 px-3 py-1 text-[1.4vh] text-slate-300">
-        <span
-          aria-hidden="true"
-          className={`size-[1vh] rounded-full ${
-            link === "online" ? "bg-emerald-400" : link === "cached" ? "bg-amber-400" : "bg-red-500"
-          }`}
+      {/* Status badge, styled like a tvOS overlay: dark material, hairline, and a
+          state icon so it is legible from across a room without reading the text. */}
+      <div className="absolute end-[1.5vh] top-[1.5vh] flex items-center gap-[0.8vh] rounded-full border border-white/12 bg-black/55 px-[1.4vh] py-[0.6vh] text-[1.5vh] text-white/75 backdrop-blur-md">
+        <Icon
+          name={link === "online" ? "online" : link === "cached" ? "offline" : "pending"}
+          size={13}
+          className={
+            link === "online" ? "text-[#30d158]"
+            : link === "cached" ? "text-[#ff9f0a]"
+            : "text-white/50"
+          }
         />
-        {link === "online" ? "Online" : link === "cached" ? "Offline · cached" : "Connecting"}
-        {quality ? <span className="text-slate-500">· {quality}</span> : null}
+        {link === "online" ? "Online" : link === "cached" ? "Offline, playing cache" : "Connecting"}
+        {quality ? <span className="text-white/40">· {quality}</span> : null}
       </div>
 
       <style>{`@keyframes bc-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }`}</style>

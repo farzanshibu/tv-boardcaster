@@ -1,22 +1,30 @@
 "use client";
 
-// SOT: dashboard-shell, sidebar-nav, route-guard, locale-switcher
-// WHAT:  the authenticated chrome: nav, topbar, and the permission guard.
-// WHY:   closes the block's gap — a page that renders without an API call would
-//        otherwise bypass every permission rule (see reference/the-block.md).
+// SOT: dashboard-shell, window-chrome, sidebar-source-list, toolbar, route-guard,
+//      appearance-control, locale-switcher
+// WHAT:  the authenticated chrome, built as a macOS window scene: traffic lights,
+//        a translucent source list, a translucent toolbar, and the content pane.
+// WHY:   DESIGN.md treats each route as a desktop window rather than a web page.
+//        The shell also closes the block's gap: a page that renders without an API
+//        call would otherwise bypass every permission rule (reference/the-block.md).
 // HOW:   nav and the guard both read src/lib/resources.ts, so they cannot disagree.
-// WHERE: registry in src/lib/resources.ts; session in src/lib/auth-context.tsx
+//        Icons come from the typed registry, so a nav entry cannot reference a
+//        glyph that does not exist.
+// WHERE: registry in src/lib/resources.ts; session in src/lib/auth-context.tsx;
+//        materials and tokens in src/app/globals.css
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Button, Chip, Spinner } from "@heroui/react";
+import { Button, Chip } from "@heroui/react";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n";
+import { useAppearance, type Appearance } from "@/lib/appearance";
 import { LOCALES, type Locale, type TranslationKey } from "@/lib/dictionaries";
 import {
   navItems, permission, resourceForPath, inPlan, type NavGroup,
 } from "@/lib/resources";
+import { Icon, IconSlot, type IconName } from "@/components/global/icon";
 import { SelectField } from "@/components/global/form";
 
 const GROUP_LABEL: Record<NavGroup, TranslationKey> = {
@@ -26,11 +34,69 @@ const GROUP_LABEL: Record<NavGroup, TranslationKey> = {
   platform: "nav.platform",
 };
 
-const ICONS: Record<string, string> = {
-  grid: "▦", monitor: "▶", clock: "◷", chart: "◔", image: "◈", list: "≣",
-  megaphone: "⟿", building: "⌂", users: "👥", card: "₹", scroll: "⎙",
-  gear: "⚙", star: "★",
-};
+/* ---------------------------------------------------------------- chrome ---- */
+
+/**
+ * The three macOS window dots.
+ * Decorative: they carry no action, but they are what makes a browser tab read as
+ * an application window. Hidden from assistive tech.
+ */
+function TrafficLights() {
+  return (
+    <div aria-hidden="true" className="flex items-center gap-[6px] pe-1">
+      <span className="size-[11px] rounded-full bg-[#ff5f57] ring-[0.5px] ring-black/12" />
+      <span className="size-[11px] rounded-full bg-[#febc2e] ring-[0.5px] ring-black/12" />
+      <span className="size-[11px] rounded-full bg-[#28c840] ring-[0.5px] ring-black/12" />
+    </div>
+  );
+}
+
+/**
+ * macOS segmented control. Used for appearance because the options are few,
+ * mutually exclusive, and worth showing at a glance. A dropdown would hide them.
+ */
+function AppearanceControl() {
+  const { appearance, setAppearance } = useAppearance();
+  const { t } = useI18n();
+
+  const options: { id: Appearance; icon: IconName; label: string }[] = [
+    { id: "system", icon: "appearanceSystem", label: t("appearance.system") },
+    { id: "light", icon: "appearanceLight", label: t("appearance.light") },
+    { id: "dark", icon: "appearanceDark", label: t("appearance.dark") },
+  ];
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={t("appearance.title")}
+      className="flex items-center gap-0.5 rounded-control bg-surface-secondary p-0.5 ring-1 ring-border/70"
+    >
+      {options.map((o) => {
+        const active = appearance === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={o.label}
+            title={o.label}
+            onClick={() => setAppearance(o.id)}
+            className={`grid size-[24px] place-items-center rounded-[4px] transition-colors duration-150 ease-mac ${
+              active
+                ? "bg-surface text-foreground shadow-raised"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            <Icon name={o.icon} size={14} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- shell ---- */
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const { session, loading, signOut, can } = useAuth();
@@ -56,10 +122,19 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     }
   }, [loading, session, pathname, can, router, platformOnly]);
 
+  // Route change closes the mobile sidebar; leaving it open would cover the result.
+  // Derived from pathname rather than an effect: no cascading render, and the
+  // sidebar is never briefly open on the new route.
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  const sidebarOpen = openedAt === pathname;
+  const toggleSidebar = () => setOpenedAt((prev) => (prev === pathname ? null : pathname));
+  const closeSidebar = () => setOpenedAt(null);
+
   if (loading || !session) {
     return (
-      <div className="flex min-h-screen items-center justify-center gap-3 text-muted">
-        <Spinner /> <span>{t("common.loading")}</span>
+      <div className="flex min-h-screen items-center justify-center gap-2.5 text-muted">
+        <Icon name="pending" size={16} className="animate-spin" />
+        <span className="text-body">{t("common.loading")}</span>
       </div>
     );
   }
@@ -75,89 +150,154 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   const groups: NavGroup[] = ["operate", "content", "organization", "platform"];
 
+  // Longest-prefix match, not `startsWith` per item: Overview lives at /dashboard,
+  // so a naive prefix test would light it up on every child route as well.
+  // resourceForPath already implements this and is what the route guard uses,
+  // so the nav highlight and the guard can never disagree.
+  const activeKey = resourceForPath(pathname);
+  const activeItem = items.find((i) => i.key === activeKey);
+  const windowTitle = activeItem ? t(activeItem.label as TranslationKey) : "Brandcast TV";
+
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-background">
       <a href="#main-content" className="skip-link">{t("action.skip")}</a>
 
-      <nav
-        aria-label="Main navigation"
-        className="sticky top-0 flex h-screen w-60 shrink-0 flex-col gap-1 overflow-y-auto border-e border-border bg-surface p-3"
-      >
-        <p className="px-2 pb-4 pt-2 text-xs font-extrabold uppercase tracking-[0.22em] text-accent">
-          Brandcast TV
-        </p>
-
-        {groups.map((group) => {
-          const groupItems = items.filter((i) => i.group === group);
-          if (!groupItems.length) return null;
-          return (
-            <div key={group}>
-              <p className="px-3 pb-1 pt-3 text-[11px] uppercase tracking-wider text-muted">
-                {t(GROUP_LABEL[group])}
-              </p>
-              {groupItems.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${
-                      active
-                        ? "bg-accent/15 font-semibold text-accent"
-                        : "text-muted hover:bg-surface-secondary hover:text-foreground"
-                    }`}
-                  >
-                    <span aria-hidden="true">{ICONS[item.icon] ?? "•"}</span>
-                    {t(item.label as TranslationKey)}
-                  </Link>
-                );
-              })}
-            </div>
-          );
-        })}
-
-        <div className="flex-1" />
-        <Link
-          href="/tv"
-          target="_blank"
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-secondary hover:text-foreground"
-        >
-          <span aria-hidden="true">⧉</span> {t("action.opentv")}
-        </Link>
+      {/* Scrim for the sidebar below lg, where it becomes an overlay panel. */}
+      {sidebarOpen ? (
         <button
           type="button"
-          onClick={signOut}
-          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm text-muted hover:bg-surface-secondary hover:text-foreground"
-        >
-          <span aria-hidden="true">⏻</span> {t("action.signout")}
-        </button>
+          aria-label={t("common.close")}
+          onClick={closeSidebar}
+          className="fixed inset-0 z-30 bg-backdrop lg:hidden"
+        />
+      ) : null}
+
+      {/* ---- Source list ---- */}
+      <nav
+        aria-label="Main navigation"
+        className={`material-sidebar fixed inset-y-0 z-40 flex w-[236px] shrink-0 flex-col border-e border-border transition-transform duration-200 ease-mac lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
+        }`}
+      >
+        {/* Sidebar's own titlebar strip, so the traffic lights sit in the corner
+            of the window rather than floating in the content pane. */}
+        <div className="flex h-[52px] shrink-0 items-center gap-2.5 px-3.5">
+          <TrafficLights />
+          <span className="truncate text-footnote font-semibold tracking-[-0.01em] text-foreground">
+            Brandcast TV
+          </span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2.5 pb-2">
+          {groups.map((group) => {
+            const groupItems = items.filter((i) => i.group === group);
+            if (!groupItems.length) return null;
+            return (
+              <div key={group} className="pb-1">
+                <p className="px-2.5 pb-1 pt-3 text-caption2 font-semibold uppercase tracking-[0.06em] text-subtle">
+                  {t(GROUP_LABEL[group])}
+                </p>
+                <ul className="flex flex-col gap-px">
+                  {groupItems.map((item) => {
+                    const active = item.key === activeKey;
+                    return (
+                      <li key={item.key}>
+                        <Link
+                          href={item.href}
+                          aria-current={active ? "page" : undefined}
+                          className={`flex h-[28px] items-center gap-2.5 rounded-control px-2.5 text-body transition-colors duration-150 ease-mac ${
+                            active
+                              ? "row-select font-medium"
+                              : "text-foreground hover:bg-surface-hover"
+                          }`}
+                        >
+                          <IconSlot
+                            name={item.icon}
+                            className={active ? "" : "text-muted"}
+                          />
+                          <span className="truncate">{t(item.label as TranslationKey)}</span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Utility rows sit at the foot of the source list, as in Finder. */}
+        <div className="flex flex-col gap-px border-t border-border/70 p-2.5">
+          <Link
+            href="/tv"
+            target="_blank"
+            className="flex h-[28px] items-center gap-2.5 rounded-control px-2.5 text-body text-foreground transition-colors duration-150 ease-mac hover:bg-surface-hover"
+          >
+            <IconSlot name="tv" className="text-muted" />
+            <span className="truncate">{t("action.opentv")}</span>
+            <Icon name="arrowUpRight" size={12} className="ms-auto text-subtle" />
+          </Link>
+          <button
+            type="button"
+            onClick={signOut}
+            className="flex h-[28px] items-center gap-2.5 rounded-control px-2.5 text-start text-body text-foreground transition-colors duration-150 ease-mac hover:bg-surface-hover"
+          >
+            <IconSlot name="signOut" className="text-muted" />
+            <span className="truncate">{t("action.signout")}</span>
+          </button>
+        </div>
       </nav>
 
+      {/* ---- Window content ---- */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-6 py-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">
-              {session.org ? session.org.name : t("nav.platform")}
-            </p>
-            <p className="text-xs text-muted">
-              {session.plan ? session.plan.name : "Platform operations"}
-            </p>
+        <header className="material-toolbar sticky top-0 z-20 flex h-[52px] items-center gap-3 border-b border-border px-4">
+          <button
+            type="button"
+            aria-label="Toggle sidebar"
+            onClick={toggleSidebar}
+            className="grid size-[28px] shrink-0 place-items-center rounded-control text-muted transition-colors duration-150 ease-mac hover:bg-surface-hover hover:text-foreground lg:hidden"
+          >
+            <Icon name="sidebar" size={16} />
+          </button>
+
+          <div className="flex min-w-0 items-baseline gap-2.5">
+            <h1 className="truncate text-title3 font-semibold tracking-[-0.01em] text-foreground">
+              {windowTitle}
+            </h1>
+            <span className="hidden truncate text-footnote text-muted sm:inline">
+              {session.org ? session.org.name : "Platform operations"}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            {session.impersonating ? <Chip color="warning" variant="soft">Support session</Chip> : null}
-            <Chip variant="soft">{session.user.role}</Chip>
+
+          <div className="ms-auto flex shrink-0 items-center gap-2">
+            {session.impersonating ? (
+              <Chip color="warning" variant="soft" className="hidden sm:flex">
+                <Icon name="security" size={12} />
+                Support session
+              </Chip>
+            ) : null}
+            {session.plan ? (
+              <span className="hidden text-footnote text-muted xl:inline">
+                {session.plan.name}
+              </span>
+            ) : null}
+            <Chip variant="soft" className="hidden md:flex">{session.user.role}</Chip>
+            <AppearanceControl />
             <SelectField
               ariaLabel={t("common.language")}
               selected={locale}
               onSelect={(id) => setLocale(id as Locale)}
               options={Object.entries(LOCALES).map(([id, label]) => ({ id, label }))}
-              className="w-36"
+              className="hidden w-[132px] md:block"
             />
           </div>
         </header>
 
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto min-w-0 w-full max-w-[1400px] flex-1 p-6"
+        >
           {children}
         </main>
       </div>
@@ -167,10 +307,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
 /** Shown when a plan does not include a resource. */
 export function UpgradeNotice({ message }: { message: string }) {
+  const router = useRouter();
   return (
-    <div className="rounded-xl border border-accent/40 bg-accent/10 p-6">
-      <p className="text-sm text-foreground">{message}</p>
-      <Button variant="primary" size="sm" className="mt-3" onPress={() => { window.location.href = "/dashboard/billing"; }}>
+    <div className="group-panel flex flex-col items-start gap-3 p-6">
+      <span className="grid size-9 place-items-center rounded-full bg-accent-soft text-accent">
+        <Icon name="billing" size={18} />
+      </span>
+      <p className="text-callout text-foreground">{message}</p>
+      <Button variant="primary" size="sm" onPress={() => router.push("/dashboard/billing")}>
         View plans
       </Button>
     </div>

@@ -4,6 +4,7 @@
 // WHAT:  scrolling ticker messages overlaid on the playlist.
 // WHY:   store hours and compliance notices change independently of the loop.
 // HOW:   optional start/end times let a ticker run only during trading hours.
+//        Each card previews the real colours, so the operator sees the result.
 // WHERE: rendering happens in web/src/app/tv/page.tsx
 
 import { useState } from "react";
@@ -13,9 +14,14 @@ import { useQuery } from "@/lib/use-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { permission } from "@/lib/resources";
-import { EmptyState, ErrorBlock, LoadingBlock, PageHeader } from "@/components/global/ui";
+import { Icon } from "@/components/global/icon";
+import {
+  EmptyState, ErrorBlock, PageHeader, SectionCard, SkeletonGrid, StatusPill,
+} from "@/components/global/ui";
 import { FormDialog } from "@/components/global/form-dialog";
-import { SelectField, TextInput, TextAreaInput, FieldRow } from "@/components/global/form";
+import {
+  SegmentedControl, TextInput, TextAreaInput, FieldRow,
+} from "@/components/global/form";
 import type { Ticker } from "@/lib/types";
 
 export default function TickersPage() {
@@ -27,21 +33,22 @@ export default function TickersPage() {
   const [editing, setEditing] = useState<Ticker | null>(null);
   const [name, setName] = useState("");
   const [text, setText] = useState("");
-  const [position, setPosition] = useState("bottom");
+  const [position, setPosition] = useState<"bottom" | "top">("bottom");
   const [speed, setSpeed] = useState("60");
   const [color, setColor] = useState("#ffffff");
   const [background, setBackground] = useState("#0f172a");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
 
-  if (tickers.loading && !tickers.data) return <LoadingBlock label={t("common.loading")} />;
+  if (tickers.loading && !tickers.data) return <SkeletonGrid count={4} />;
   if (tickers.error) return <ErrorBlock message={tickers.error} onRetry={tickers.reload} />;
   const list = tickers.data ?? [];
 
   const openEditor = (x: Ticker | null) => {
     setEditing(x);
     setName(x?.name ?? ""); setText(x?.text ?? "");
-    setPosition(x?.position ?? "bottom"); setSpeed(String(x?.speed ?? 60));
+    setPosition(x?.position === "top" ? "top" : "bottom");
+    setSpeed(String(x?.speed ?? 60));
     setColor(x?.color ?? "#ffffff"); setBackground(x?.background ?? "#0f172a");
     setStartTime(x?.start_time ?? ""); setEndTime(x?.end_time ?? "");
     setOpen(true);
@@ -53,35 +60,61 @@ export default function TickersPage() {
         title={t("nav.tickers")}
         subtitle={`${list.length} tickers`}
         actions={can(permission("tickers", "create")) ? (
-          <Button variant="primary" onPress={() => openEditor(null)}>{t("tickers.new")}</Button>
+          <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+            <Icon name="add" size={13} />
+            {t("tickers.new")}
+          </Button>
         ) : null}
       />
 
       {list.length === 0 ? (
-        <EmptyState title={t("tickers.empty")} />
+        <SectionCard flush>
+          <EmptyState
+            icon="tickers"
+            title={t("tickers.empty")}
+            hint="A ticker scrolls over your playlist. Use it for store hours or notices."
+            action={can(permission("tickers", "create")) ? (
+              <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+                <Icon name="add" size={13} />
+                {t("tickers.new")}
+              </Button>
+            ) : null}
+          />
+        </SectionCard>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {list.map((x) => (
-            <div key={x.id} className="panel p-4">
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">{x.name}</p>
-                <span className="text-xs text-muted">{x.position}</span>
+            <div key={x.id} className="group-panel flex flex-col gap-3 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 truncate text-callout font-semibold text-foreground">{x.name}</p>
+                <StatusPill tone="neutral" icon={x.start_time ? "time" : "check"}>
+                  {x.start_time ? `${x.start_time} to ${x.end_time}` : "Always on"}
+                </StatusPill>
               </div>
-              <p
-                className="mt-3 truncate rounded-md px-3 py-2 text-sm"
+
+              {/* Live preview in the ticker's own colours: the operator sees the result. */}
+              <div
+                className="overflow-hidden rounded-control border border-border"
                 style={{ background: x.background, color: x.color }}
               >
-                {x.text}
+                <p className="truncate px-3 py-2 text-body">{x.text}</p>
+              </div>
+
+              <p className="flex items-center gap-1.5 text-footnote text-muted">
+                <Icon name="expand" size={12} />
+                {x.position} · speed {x.speed}
               </p>
-              <p className="mt-2 text-xs text-muted">
-                {x.start_time ? `Active ${x.start_time}–${x.end_time}` : "Always on"}
-              </p>
-              <div className="mt-3 flex gap-2">
+
+              <div className="flex gap-2 border-t border-separator pt-3">
                 {can(permission("tickers", "update")) ? (
-                  <Button size="sm" variant="outline" onPress={() => openEditor(x)}>{t("common.edit")}</Button>
+                  <Button size="sm" variant="outline" onPress={() => openEditor(x)}>
+                    <Icon name="edit" size={13} />
+                    {t("common.edit")}
+                  </Button>
                 ) : null}
                 {can(permission("tickers", "delete")) ? (
-                  <Button size="sm" variant="danger-soft" onPress={() => void api.deleteTicker(x.id).then(tickers.reload)}>
+                  <Button size="sm" variant="danger-soft" className="ms-auto" onPress={() => void api.deleteTicker(x.id).then(tickers.reload)}>
+                    <Icon name="delete" size={13} />
                     {t("common.delete")}
                   </Button>
                 ) : null}
@@ -95,8 +128,9 @@ export default function TickersPage() {
         isOpen={open}
         onClose={() => setOpen(false)}
         title={editing ? "Edit flash news" : "New flash news"}
-        description="Scrolling ticker shown over the playlist."
-        confirmLabel="Save"
+        description="A scrolling ticker shown over the playlist."
+        icon="tickers"
+        confirmLabel={t("common.save")}
         onConfirm={async () => {
           const body = {
             name, text, position, speed: Number(speed), color, background,
@@ -108,24 +142,35 @@ export default function TickersPage() {
         }}
       >
         <TextInput label="Name" value={name} onChange={setName} placeholder="Store hours notice" />
-        <TextAreaInput label="Message" value={text} onChange={setText} placeholder="Welcome • Open 9am-10pm" />
-        <FieldRow>
-          <SelectField
-            label="Position"
+        <TextAreaInput label="Message" value={text} onChange={setText} placeholder="Welcome · Open 9am to 10pm" />
+
+        {/* Preview inside the sheet too, so colour choices are checked before saving. */}
+        <div
+          className="overflow-hidden rounded-field border border-border"
+          style={{ background, color }}
+        >
+          <p className="truncate px-3 py-2 text-body">{text || "Preview"}</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <span className="text-body font-medium text-foreground">Position</span>
+          <SegmentedControl
+            ariaLabel="Ticker position"
+            value={position}
+            onChange={setPosition}
             options={[{ id: "bottom", label: "Bottom" }, { id: "top", label: "Top" }]}
-            selected={position}
-            onSelect={setPosition}
           />
-          <TextInput label="Scroll speed" value={speed} onChange={setSpeed} type="number" />
-        </FieldRow>
+        </div>
+
         <FieldRow>
           <TextInput label="Text colour" value={color} onChange={setColor} type="color" />
           <TextInput label="Background" value={background} onChange={setBackground} type="color" />
         </FieldRow>
         <FieldRow>
+          <TextInput label="Scroll speed" value={speed} onChange={setSpeed} type="number" />
           <TextInput label="Show from (local)" value={startTime} onChange={setStartTime} type="time" />
-          <TextInput label="Show until (local)" value={endTime} onChange={setEndTime} type="time" />
         </FieldRow>
+        <TextInput label="Show until (local)" value={endTime} onChange={setEndTime} type="time" />
       </FormDialog>
     </div>
   );

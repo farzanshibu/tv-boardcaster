@@ -1,16 +1,19 @@
 "use client";
 
-// SOT: login-page, signup-flow, totp-challenge
-// WHAT:  sign-in, self-serve signup and the 2FA challenge in one form.
+// SOT: login-page, signup-flow, totp-challenge, auth-window
+// WHAT:  sign-in, self-serve signup and the 2FA challenge in one window.
 // WHY:   signup creates the tenant, so it belongs beside login, not on its own route.
-// HOW:   on success the token goes to the auth context, which redirects to /dashboard.
+// HOW:   presented as a floating macOS window with traffic lights and a titlebar,
+//        which is the first thing a new operator sees and sets the whole tone.
+//        On success the token goes to the auth context, which redirects to /dashboard.
 // WHERE: api.login / api.signup in src/lib/api.ts
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Alert, Button, Card } from "@heroui/react";
-import { SelectField, TextInput } from "@/components/global/form";
+import { Alert, Button } from "@heroui/react";
+import { SegmentedControl, SelectField, TextInput } from "@/components/global/form";
+import { Icon } from "@/components/global/icon";
+import { AuthWindow } from "@/components/global/auth-window";
 import { api, ApiError, describeError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useI18n } from "@/lib/i18n";
@@ -59,75 +62,91 @@ export default function LoginPage() {
     }
   };
 
+  const title =
+    mode === "signup" ? t("auth.signup_title")
+    : mode === "totp" ? t("auth.totp")
+    : t("auth.signin");
+
+  const subtitle =
+    mode === "signup" ? t("auth.signup_sub")
+    : mode === "totp" ? "Enter the 6-digit code from your authenticator app."
+    : t("auth.signin_sub");
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-linear-to-br from-surface-secondary to-background p-6">
-      <Card className="w-full max-w-md">
-        <Card.Header>
-          <p className="text-xs font-bold uppercase tracking-[0.25em] text-accent">Brandcast TV</p>
-          <Card.Title className="mt-1 text-2xl">
-            {mode === "signup" ? t("auth.signup_title") : t("auth.signin")}
-          </Card.Title>
-          <Card.Description>
-            {mode === "signup" ? t("auth.signup_sub") : t("auth.signin_sub")}
-          </Card.Description>
-        </Card.Header>
+    <AuthWindow windowTitle="Brandcast TV" title={title} subtitle={subtitle}>
+      {/* The 2FA challenge is a continuation, not a third tab, so the switcher hides. */}
+      {mode !== "totp" ? (
+        <SegmentedControl
+          ariaLabel="Sign in or create an account"
+          className="w-full [&>button]:flex-1"
+          value={mode}
+          onChange={(m) => { setMode(m); setError(null); }}
+          options={[
+            { id: "login", label: t("auth.signin") },
+            { id: "signup", label: t("auth.need_account") },
+          ]}
+        />
+      ) : null}
 
-        <Card.Content className="flex flex-col gap-3">
-          {error ? (
-            <Alert status="danger">
-              <Alert.Content><Alert.Description>{error}</Alert.Description></Alert.Content>
-            </Alert>
-          ) : null}
+      {error ? (
+        <Alert status="danger">
+          <Alert.Content><Alert.Description>{error}</Alert.Description></Alert.Content>
+        </Alert>
+      ) : null}
 
-          {mode === "signup" ? (
-            <>
-              <TextInput label={t("auth.name")} value={name} onChange={setName} placeholder="Riya Sharma" onEnter={submit} />
-              <TextInput label={t("auth.org")} value={org} onChange={setOrg} placeholder="Acme Retail" onEnter={submit} />
-              <SelectField
-                label={t("auth.country")}
-                selected={country}
-                onSelect={setCountry}
-                options={[
-                  { id: "IN", label: "India (GST invoicing)" },
-                  { id: "US", label: "United States" },
-                ]}
-              />
-            </>
-          ) : null}
-
-          <TextInput label={t("auth.email")} value={email} onChange={setEmail} type="email" placeholder="you@company.com" onEnter={submit} />
-          <TextInput label={t("auth.password")} value={password} onChange={setPassword} type="password" placeholder="********" onEnter={submit} />
-
-          {mode === "totp" ? (
-            <TextInput label={t("auth.totp")} value={totp} onChange={setTotp} placeholder="123456" onEnter={submit} />
-          ) : null}
-
-          <Button variant="primary" isPending={busy} onPress={submit} className="mt-2 w-full">
-            {mode === "signup" ? t("auth.create") : t("auth.signin")}
-          </Button>
-
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={() => { setMode(mode === "signup" ? "login" : "signup"); setError(null); }}
-            >
-              {mode === "signup" ? t("auth.have_account") : t("auth.need_account")}
-            </Button>
-            <Link href="/tv" target="_blank" className="text-sm text-accent hover:underline">
-              {t("auth.open_tv")} →
-            </Link>
-          </div>
-
+      {mode === "signup" ? (
+        <>
+          <TextInput label={t("auth.name")} value={name} onChange={setName} placeholder="Riya Sharma" onEnter={submit} />
+          <TextInput label={t("auth.org")} value={org} onChange={setOrg} placeholder="Acme Retail" onEnter={submit} />
           <SelectField
-            ariaLabel={t("common.language")}
-            selected={locale}
-            onSelect={(id) => setLocale(id as Locale)}
-            options={Object.entries(LOCALES).map(([id, label]) => ({ id, label }))}
-            className="w-full pt-2"
+            label={t("auth.country")}
+            selected={country}
+            onSelect={setCountry}
+            options={[
+              { id: "IN", label: "India (GST invoicing)" },
+              { id: "US", label: "United States" },
+            ]}
           />
-        </Card.Content>
-      </Card>
-    </main>
+        </>
+      ) : null}
+
+      {mode === "totp" ? (
+        <TextInput label={t("auth.totp")} value={totp} onChange={setTotp} placeholder="123456" onEnter={submit} />
+      ) : (
+        <>
+          <TextInput label={t("auth.email")} value={email} onChange={setEmail} type="email" placeholder="you@company.com" onEnter={submit} />
+          <TextInput label={t("auth.password")} value={password} onChange={setPassword} type="password" placeholder="••••••••" onEnter={submit} />
+        </>
+      )}
+
+      <Button variant="primary" isPending={busy} onPress={submit} className="mt-1 w-full">
+        {mode === "signup" ? t("auth.create") : t("auth.signin")}
+      </Button>
+
+      {mode === "totp" ? (
+        <Button variant="ghost" size="sm" onPress={() => { setMode("login"); setTotp(""); }}>
+          <Icon name="chevronLeft" size={13} className="rtl:rotate-180" />
+          Back to sign in
+        </Button>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-2 border-t border-separator pt-3">
+        <button
+          type="button"
+          onClick={() => { window.open("/tv", "_blank"); }}
+          className="inline-flex items-center gap-1.5 text-footnote text-accent transition-colors duration-150 ease-mac hover:underline"
+        >
+          <Icon name="tv" size={13} />
+          {t("auth.open_tv")}
+        </button>
+        <SelectField
+          ariaLabel={t("common.language")}
+          selected={locale}
+          onSelect={(id) => setLocale(id as Locale)}
+          options={Object.entries(LOCALES).map(([id, label]) => ({ id, label }))}
+          className="w-[132px]"
+        />
+      </div>
+    </AuthWindow>
   );
 }

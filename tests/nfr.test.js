@@ -241,3 +241,76 @@ test('the TV player caches content and reconnects when offline', () => {
   assert.match(tv, /type: "play"/, 'reports play events');
   assert.match(tv, /setTimeout\(connect, 4000\)/, 'auto-reconnects');
 });
+
+/* ---- design system: DESIGN.md invariants ---- */
+
+/** Every .ts/.tsx under web/src, so a new view cannot quietly opt out. */
+const sourceFiles = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) return sourceFiles(full);
+    return /\.tsx?$/.test(e.name) ? [full] : [];
+  });
+
+test('no emoji or unicode glyphs are used as icons', () => {
+  // Emoji, dingbats, geometric shapes, arrows and box-drawing characters. These
+  // render differently on every platform, ignore font weight, do not reliably
+  // inherit currentColor, and are announced by screen readers. DESIGN.md bans
+  // them outright; icons come from the HugeIcons registry instead.
+  const glyphs =
+    /[\u{1F300}-\u{1FAFF}\u{1F000}-\u{1F0FF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{2900}-\u{2BFF}\u{FE0F}\u{25A0}-\u{25FF}\u{2580}-\u{259F}]/u;
+  const offenders = [];
+  for (const file of sourceFiles(WEB)) {
+    // The registry's own header quotes the banned glyphs to explain the rule.
+    if (file.endsWith(path.join('global', 'icon.tsx'))) continue;
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      if (glyphs.test(line)) offenders.push(`${path.relative(WEB, file)}:${i + 1} ${line.trim().slice(0, 70)}`);
+    });
+  }
+  assert.deepEqual(offenders, [], 'use <Icon name="…" /> instead of a unicode glyph');
+});
+
+test('icons come from the single typed registry', () => {
+  const offenders = sourceFiles(WEB).filter(
+    (f) =>
+      !f.endsWith(path.join('global', 'icon.tsx')) &&
+      fs.readFileSync(f, 'utf8').includes('@hugeicons/core-free-icons'),
+  );
+  assert.deepEqual(
+    offenders.map((f) => path.relative(WEB, f)),
+    [],
+    'import { Icon } from "@/components/global/icon" rather than the icon package',
+  );
+
+  const registry = fs.readFileSync(path.join(WEB, 'components/global/icon.tsx'), 'utf8');
+  assert.match(registry, /export type IconName = keyof typeof ICONS/, 'names are a literal union');
+  assert.match(registry, /aria-hidden=\{title \? undefined : true\}/, 'decorative by default');
+});
+
+test('both appearances are defined and follow the system by default', () => {
+  const css = fs.readFileSync(path.join(WEB, 'app/globals.css'), 'utf8');
+  assert.match(css, /\.light \{/, 'light appearance is defined');
+  assert.match(css, /\.dark \{/, 'dark appearance is defined');
+  assert.match(css, /color-scheme: light/, 'native controls follow light');
+  assert.match(css, /color-scheme: dark/, 'native controls follow dark');
+
+  const appearance = fs.readFileSync(path.join(WEB, 'lib/appearance.tsx'), 'utf8');
+  assert.match(appearance, /prefers-color-scheme: dark/, 'reads the OS preference');
+  assert.match(appearance, /useSyncExternalStore/, 'subscribes rather than mirroring into state');
+  assert.match(appearance, /APPEARANCE_BOOT_SCRIPT/, 'applies the class before first paint');
+});
+
+test('colours come from tokens, never hardcoded in a view', () => {
+  // Two deliberate exceptions: the macOS traffic-light dots and the TV kiosk,
+  // which is always-dark by design and never inherits the dashboard appearance.
+  const allowed = ['dashboard-shell.tsx', 'auth-window.tsx', path.join('app', 'tv', 'page.tsx')];
+  const offenders = [];
+  for (const file of sourceFiles(WEB)) {
+    if (allowed.some((a) => file.endsWith(a))) continue;
+    const text = fs.readFileSync(file, 'utf8');
+    const hits = text.match(/(?:bg|text|border)-\[#[0-9a-fA-F]{3,8}\]/g);
+    if (hits) offenders.push(`${path.relative(WEB, file)}: ${hits.join(', ')}`);
+  }
+  assert.deepEqual(offenders, [], 'use a semantic token, not a hex literal');
+});

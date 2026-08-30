@@ -4,6 +4,7 @@
 // HOW:   `as const satisfies` keeps literal types so PermissionKey stays a real union.
 // WHERE: server-side equivalents live in ../../src/lib/plans.js and auth.js
 
+import type { IconName } from "@/components/global/icon";
 import type { PlanKey, Role } from "./types";
 
 export const UNLIMITED = -1;
@@ -16,7 +17,7 @@ interface ResourceDefinition {
   limits: Record<PlanKey, Limit>;
   permissions: readonly string[];
   upgradeMessage: string;
-  nav?: { label: string; href: string; icon: string; group: NavGroup };
+  nav?: { label: string; href: string; icon: IconName; group: NavGroup };
 }
 
 export type NavGroup = "operate" | "content" | "organization" | "platform";
@@ -32,7 +33,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["read"],
     upgradeMessage: "Upgrade to {next} for more.",
-    nav: { label: "nav.overview", href: "/dashboard", icon: "grid", group: "operate" },
+    nav: { label: "nav.overview", href: "/dashboard", icon: "overview", group: "operate" },
   },
   screens: {
     name: "Screens",
@@ -40,7 +41,7 @@ export const RESOURCES = {
     limits: { trial: 3, starter: 10, growth: 100, enterprise: UNLIMITED },
     permissions: ["create", "read", "update", "delete", "publish"],
     upgradeMessage: "You've reached your screen limit. Upgrade to {next} for more.",
-    nav: { label: "nav.screens", href: "/dashboard/screens", icon: "monitor", group: "operate" },
+    nav: { label: "nav.screens", href: "/dashboard/screens", icon: "screens", group: "operate" },
   },
   schedules: {
     name: "Scheduling",
@@ -48,7 +49,7 @@ export const RESOURCES = {
     limits: { trial: 0, starter: 0, growth: UNLIMITED, enterprise: UNLIMITED },
     permissions: ["create", "read", "update", "delete"],
     upgradeMessage: "Scheduling is available on {next}.",
-    nav: { label: "nav.schedules", href: "/dashboard/schedules", icon: "clock", group: "operate" },
+    nav: { label: "nav.schedules", href: "/dashboard/schedules", icon: "schedules", group: "operate" },
   },
   analytics: {
     name: "Analytics",
@@ -56,7 +57,7 @@ export const RESOURCES = {
     limits: { trial: 0, starter: 0, growth: UNLIMITED, enterprise: UNLIMITED },
     permissions: ["read"],
     upgradeMessage: "Analytics is available on {next}.",
-    nav: { label: "nav.analytics", href: "/dashboard/analytics", icon: "chart", group: "operate" },
+    nav: { label: "nav.analytics", href: "/dashboard/analytics", icon: "analytics", group: "operate" },
   },
   media: {
     name: "Media Library",
@@ -64,7 +65,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["create", "read", "update", "delete", "approve"],
     upgradeMessage: "Upgrade to {next} for more media.",
-    nav: { label: "nav.media", href: "/dashboard/media", icon: "image", group: "content" },
+    nav: { label: "nav.media", href: "/dashboard/media", icon: "media", group: "content" },
   },
   playlists: {
     name: "Playlists",
@@ -72,7 +73,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["create", "read", "update", "delete", "approve"],
     upgradeMessage: "Upgrade to {next} for more playlists.",
-    nav: { label: "nav.playlists", href: "/dashboard/playlists", icon: "list", group: "content" },
+    nav: { label: "nav.playlists", href: "/dashboard/playlists", icon: "playlists", group: "content" },
   },
   tickers: {
     name: "Flash News",
@@ -80,7 +81,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["create", "read", "update", "delete"],
     upgradeMessage: "Upgrade to {next} for more tickers.",
-    nav: { label: "nav.tickers", href: "/dashboard/tickers", icon: "megaphone", group: "content" },
+    nav: { label: "nav.tickers", href: "/dashboard/tickers", icon: "tickers", group: "content" },
   },
   branches: {
     name: "Branches",
@@ -88,7 +89,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["create", "read", "update", "delete"],
     upgradeMessage: "Upgrade to {next} for more branches.",
-    nav: { label: "nav.branches", href: "/dashboard/branches", icon: "building", group: "organization" },
+    nav: { label: "nav.branches", href: "/dashboard/branches", icon: "branches", group: "organization" },
   },
   team: {
     name: "Team & Roles",
@@ -96,7 +97,7 @@ export const RESOURCES = {
     limits: { trial: 3, starter: 5, growth: 25, enterprise: UNLIMITED },
     permissions: ["create", "read", "update", "delete"],
     upgradeMessage: "You've reached your user limit. Upgrade to {next} for more.",
-    nav: { label: "nav.team", href: "/dashboard/team", icon: "users", group: "organization" },
+    nav: { label: "nav.team", href: "/dashboard/team", icon: "team", group: "organization" },
   },
   billing: {
     name: "Billing",
@@ -104,7 +105,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["read", "update"],
     upgradeMessage: "Upgrade to {next}.",
-    nav: { label: "nav.billing", href: "/dashboard/billing", icon: "card", group: "organization" },
+    nav: { label: "nav.billing", href: "/dashboard/billing", icon: "billing", group: "organization" },
   },
   audit: {
     name: "Audit Log",
@@ -112,7 +113,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["read"],
     upgradeMessage: "Upgrade to {next}.",
-    nav: { label: "nav.audit", href: "/dashboard/audit", icon: "scroll", group: "organization" },
+    nav: { label: "nav.audit", href: "/dashboard/audit", icon: "audit", group: "organization" },
   },
   settings: {
     name: "Settings",
@@ -120,7 +121,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["read", "update"],
     upgradeMessage: "Upgrade to {next}.",
-    nav: { label: "nav.settings", href: "/dashboard/settings", icon: "gear", group: "organization" },
+    nav: { label: "nav.settings", href: "/dashboard/settings", icon: "settings", group: "organization" },
   },
   platform: {
     name: "Platform Admin",
@@ -128,7 +129,7 @@ export const RESOURCES = {
     limits: ALL,
     permissions: ["read", "update"],
     upgradeMessage: "Internal only.",
-    nav: { label: "nav.admin", href: "/dashboard/admin", icon: "star", group: "platform" },
+    nav: { label: "nav.admin", href: "/dashboard/admin", icon: "platform", group: "platform" },
   },
 } as const satisfies Record<string, ResourceDefinition>;
 
@@ -216,7 +217,7 @@ export interface NavItem {
   key: ResourceKey;
   label: string;
   href: string;
-  icon: string;
+  icon: IconName;
   group: NavGroup;
 }
 

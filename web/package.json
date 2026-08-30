@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@heroui/react": "^3.2.4",
+    "@hugeicons/core-free-icons": "^4.3.0",
+    "@hugeicons/react": "^1.1.10",
     "hls.js": "^1.7.1",
     "next": "16.3.3",
     "react": "19.2.8",

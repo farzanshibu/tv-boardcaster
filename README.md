@@ -63,11 +63,39 @@ Media falls back to local disk when MinIO is unreachable, so the app runs standa
 |---|---|---|
 | UI | Next.js 16.3 (App Router) + React 19 | one framework for dashboard and TV client |
 | Components | HeroUI 3 | React Aria underneath, so dialogs and menus are accessible by construction |
+| Icons | HugeIcons (stroke) | one typed registry; no emoji or unicode glyphs as icons |
 | Types | TypeScript 7 (`tsgo`, native Go compiler) | full strict mode, ~10x faster checks |
 | Runtime | Bun 1.4 | one toolchain for install, test and serve; ~11s installs |
 | API | Express + `bun:sqlite` (WAL) + `ws` | one process owns REST, WebSockets and the Next handler; zero native addons |
 | Storage | MinIO (S3 API) | CDN origin for media; local-disk fallback |
 | Transcoding | ffmpeg | HLS ladder + MP4 fallbacks + responsive images |
+
+## Design
+
+The console is built as a **macOS desktop application**, not a web dashboard. Every
+route is a window scene: traffic lights and a translucent titlebar, a source list on
+the leading edge, and grouped inset content in the middle. The reference is Apple's
+own utilities: System Settings, Console, App Store Connect.
+
+- **Appearance follows the system.** `System` / `Light` / `Dark`, switched from a
+  segmented control in the toolbar. A blocking inline script applies the class before
+  first paint, so there is no flash of the wrong appearance, and `System` re-resolves
+  live when macOS appearance changes.
+- **Apple's semantic colour vocabulary.** Tokens are named for their role
+  (`label`, `separator`, `field-border`, `systemBlue`) rather than for a palette
+  position, and the same names carry different values per appearance, so a component
+  is written once. Colour strategy is Restrained: tinted neutrals plus one accent,
+  and semantic colour only ever means state.
+- **Native type.** The system font stack (SF Pro on macOS) at AppKit's control sizes:
+  13px body, 28px controls, 6px button corners, tabular numerals in every table.
+- **One icon family.** `@hugeicons/react` behind a typed registry at
+  `web/src/components/global/icon.tsx`. Views pass an intent name (`"publish"`,
+  `"offline"`), never a glyph, so a typo is a compile error and the set cannot drift.
+
+`PRODUCT.md` holds the strategic context; `DESIGN.md` holds the visual system. Four
+tests in `tests/nfr.test.js` enforce the invariants: no unicode glyphs as icons, no
+icon imports outside the registry, both appearances defined, and no hardcoded hex
+colours in a view.
 
 ## Architecture
 
@@ -205,8 +233,12 @@ denials, plan limits, rate limiting, the HLS ladder, and adaptive selection.
   caller's own `device_id`, so guessing a 4-digit code yields nothing.
 - **WCAG 2.1 AA**: skip link, landmarks, `aria-current`, dialogs with focus
   trapping via React Aria, labelled controls, logical CSS properties so Arabic
-  mirrors correctly, and `prefers-reduced-motion`. Body text sits at 17:1 contrast,
-  muted text at 9.4:1 (AA needs 4.5:1).
+  mirrors correctly, and `prefers-reduced-motion`. Body text sits at 15.8:1 contrast
+  in light and 16.1:1 in dark; muted text at 5.9:1 and 7.2:1 (AA needs 4.5:1).
+- **Status is never colour alone.** Every state pill pairs a semantic colour with an
+  icon and a text label, so it survives deuteranopia and a bright showroom monitor.
+- **Drag has a keyboard equivalent.** The playlist builder exposes move-up/move-down
+  buttons beside every row, since drag-and-drop alone fails WCAG 2.1.
 - **Localization** in English, Hindi, Tamil, Kannada and Arabic. `TranslationKey`
   is derived from the English dictionary, so a missing key in any locale fails the
   build rather than silently falling back.

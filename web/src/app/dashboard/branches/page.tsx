@@ -2,18 +2,23 @@
 
 // SOT: branches-page, location-hierarchy
 // WHAT:  locations that group screens, each with its own timezone and defaults.
-// WHY:   dayparting is meaningless without the branch's local clock.
+// WHY:   dayparting is meaningless without the branch's local clock, so the live
+//        local time is shown per row rather than buried in an edit sheet.
 // HOW:   branch defaults apply to any screen with no explicit assignment.
 // WHERE: schedule resolution in src/lib/content.js
 
-import { useState } from "react";
-import { Button, Chip } from "@heroui/react";
+import { useEffect, useState } from "react";
+import { Button } from "@heroui/react";
 import { api } from "@/lib/api";
 import { useQuery } from "@/lib/use-query";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth-context";
 import { permission } from "@/lib/resources";
-import { DataTable, ErrorBlock, LoadingBlock, PageHeader, SectionCard, Td } from "@/components/global/ui";
+import { Icon } from "@/components/global/icon";
+import {
+  DataTable, EmptyState, ErrorBlock, LoadingBlock, PageHeader, SectionCard,
+  StatusPill, Td, Tr,
+} from "@/components/global/ui";
 import { FormDialog } from "@/components/global/form-dialog";
 import { SelectField, TextInput, FieldRow } from "@/components/global/form";
 import type { Branch } from "@/lib/types";
@@ -38,7 +43,14 @@ export default function BranchesPage() {
   const [defaultPlaylist, setDefaultPlaylist] = useState("");
   const [defaultTicker, setDefaultTicker] = useState("");
 
-  if (branches.loading && !branches.data) return <LoadingBlock label={t("common.loading")} />;
+  // Branch clocks are live: a stale time would defeat the point of showing it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (branches.loading && !branches.data) return <LoadingBlock rows={5} />;
   if (branches.error) return <ErrorBlock message={branches.error} onRetry={branches.reload} />;
   const list = branches.data ?? [];
 
@@ -53,8 +65,10 @@ export default function BranchesPage() {
 
   const localTime = (tz: string) => {
     try {
-      return new Date().toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
-    } catch { return "—"; }
+      return new Date(now).toLocaleTimeString("en-GB", {
+        timeZone: tz, hour: "2-digit", minute: "2-digit",
+      });
+    } catch { return "Unknown"; }
   };
 
   return (
@@ -63,37 +77,74 @@ export default function BranchesPage() {
         title={t("nav.branches")}
         subtitle={`${list.length} branches`}
         actions={can(permission("branches", "create")) ? (
-          <Button variant="primary" onPress={() => openEditor(null)}>{t("branches.new")}</Button>
+          <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+            <Icon name="add" size={13} />
+            {t("branches.new")}
+          </Button>
         ) : null}
       />
 
-      <SectionCard>
-        <DataTable head={["Branch", "Timezone", "Screens", "Local time", "Status", ""]}>
-          {list.map((b) => (
-            <tr key={b.id}>
-              <Td>
-                <p className="font-medium">{b.name}</p>
-                <p className="text-xs text-muted">{b.address ?? "—"}</p>
-              </Td>
-              <Td className="text-muted">{b.timezone}</Td>
-              <Td>{b.screen_count}</Td>
-              <Td className="tabular-nums text-muted">{localTime(b.timezone)}</Td>
-              <Td><Chip variant="soft" color={b.status === "active" ? "success" : "default"}>{b.status}</Chip></Td>
-              <Td>
-                {can(permission("branches", "update")) ? (
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onPress={() => openEditor(b)}>{t("common.edit")}</Button>
-                    {b.status === "active" ? (
-                      <Button size="sm" variant="danger-soft" onPress={() => void api.archiveBranch(b.id).then(branches.reload)}>
-                        Archive
+      <SectionCard flush>
+        {list.length === 0 ? (
+          <EmptyState
+            icon="branches"
+            title="No branches yet"
+            hint="A branch groups screens and sets their local timezone for scheduling."
+            action={can(permission("branches", "create")) ? (
+              <Button variant="primary" size="sm" onPress={() => openEditor(null)}>
+                <Icon name="add" size={13} />
+                {t("branches.new")}
+              </Button>
+            ) : null}
+          />
+        ) : (
+          <DataTable head={["Branch", "Timezone", "Screens", "Local time", "Status", ""]}>
+            {list.map((b) => (
+              <Tr key={b.id}>
+                <Td>
+                  <p className="font-medium text-foreground">{b.name}</p>
+                  {b.address ? (
+                    <p className="flex items-center gap-1 text-footnote text-muted">
+                      <Icon name="location" size={11} />
+                      {b.address}
+                    </p>
+                  ) : null}
+                </Td>
+                <Td className="text-footnote text-muted">{b.timezone}</Td>
+                <Td className="tabular-nums">{b.screen_count}</Td>
+                <Td className="tabular-nums text-muted">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Icon name="time" size={12} />
+                    {localTime(b.timezone)}
+                  </span>
+                </Td>
+                <Td>
+                  <StatusPill
+                    tone={b.status === "active" ? "success" : "neutral"}
+                    icon={b.status === "active" ? "success" : "info"}
+                  >
+                    {b.status}
+                  </StatusPill>
+                </Td>
+                <Td>
+                  {can(permission("branches", "update")) ? (
+                    <div className="flex justify-end gap-1.5">
+                      <Button size="sm" variant="outline" onPress={() => openEditor(b)}>
+                        <Icon name="edit" size={13} />
+                        {t("common.edit")}
                       </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </Td>
-            </tr>
-          ))}
-        </DataTable>
+                      {b.status === "active" ? (
+                        <Button size="sm" variant="danger-soft" onPress={() => void api.archiveBranch(b.id).then(branches.reload)}>
+                          Archive
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </Td>
+              </Tr>
+            ))}
+          </DataTable>
+        )}
       </SectionCard>
 
       <FormDialog
@@ -101,7 +152,8 @@ export default function BranchesPage() {
         onClose={() => setOpen(false)}
         title={editing ? "Edit branch" : "New branch"}
         description="Branch defaults apply to screens with no explicit assignment."
-        confirmLabel="Save"
+        icon="branches"
+        confirmLabel={t("common.save")}
         onConfirm={async () => {
           if (editing) {
             await api.updateBranch(editing.id, {
@@ -116,8 +168,19 @@ export default function BranchesPage() {
         }}
       >
         <TextInput label="Branch name" value={name} onChange={setName} placeholder="Koramangala Store" />
-        <SelectField label="Timezone" options={TIMEZONES.map((tz) => ({ id: tz, label: tz }))} selected={timezone} onSelect={setTimezone} />
-        <TextInput label="Address" value={address} onChange={setAddress} placeholder="80 Feet Road, Bengaluru" />
+        <SelectField
+          label="Timezone"
+          options={TIMEZONES.map((tz) => ({ id: tz, label: tz }))}
+          selected={timezone}
+          onSelect={setTimezone}
+        />
+        <TextInput
+          label="Address"
+          value={address}
+          onChange={setAddress}
+          placeholder="80 Feet Road, Bengaluru"
+          description={`Local time here is currently ${localTime(timezone)}.`}
+        />
         {editing ? (
           <FieldRow>
             <SelectField
