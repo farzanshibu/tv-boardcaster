@@ -25,7 +25,9 @@ const webDir = path.join(ROOT, "web");
 async function createNextHandler() {
   if (dev) {
     const { default: next } = await import("next");
-    const nextApp = next({ dev: true, dir: webDir });
+    // Next 16 claims its own dev port (3000 by default) and writes .next/dev/lock
+    // with it. Pin it to our port so a stray listener on 3000 cannot block boot.
+    const nextApp = next({ dev: true, dir: webDir, port, hostname: "localhost" });
     await nextApp.prepare();
     return nextApp.getRequestHandler();
   }
