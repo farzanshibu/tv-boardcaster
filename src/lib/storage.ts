@@ -55,6 +55,9 @@ export function getClient(): Client {
   client = new Client({
     endPoint: ENDPOINT, port: PORT, useSSL: USE_SSL,
     accessKey: ACCESS_KEY, secretKey: SECRET_KEY,
+    // Hosted S3-compatible stores sign for a named region; without one the client would
+    // probe for it and sign for us-east-1.
+    ...(process.env.MINIO_REGION ? { region: process.env.MINIO_REGION } : {}),
   });
   return client;
 }
@@ -84,7 +87,10 @@ export async function initStorage(): Promise<StorageInfo> {
     const c = getClient();
     const exists = await c.bucketExists(BUCKET).catch(() => false);
     if (!exists) await c.makeBucket(BUCKET, process.env.MINIO_REGION || 'us-east-1');
-    await c.setBucketPolicy(BUCKET, PUBLIC_READ_POLICY(BUCKET));
+    // Not every S3-compatible store implements bucket policies (Neon storage does not).
+    // The bucket then stays private and media is served through the API's /media route.
+    await c.setBucketPolicy(BUCKET, PUBLIC_READ_POLICY(BUCKET)).catch((err: Error) =>
+      console.warn(`[storage] bucket policy not applied (${err.message}); serving via /media`));
     ready = true;
     return { driver: 'minio', bucket: BUCKET, endpoint: `${ENDPOINT}:${PORT}` };
   } catch (err) {
